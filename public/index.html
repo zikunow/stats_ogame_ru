@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OGame RU Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>OGame RU Dashboard</h1>
+          <p id="metaLine">Загрузка данных...</p>
+        </div>
+        <button id="refreshButton" type="button">Обновить</button>
+      </header>
+
+      <section class="toolbar" aria-label="Фильтры">
+        <label>
+          <span>Вселенная</span>
+          <select id="universeFilter"></select>
+        </label>
+        <label>
+          <span>Топ</span>
+          <select id="limitFilter">
+            <option value="100">100</option>
+            <option value="500">500</option>
+            <option value="1000">1000</option>
+            <option value="all">Все</option>
+          </select>
+        </label>
+        <label class="search">
+          <span>Поиск</span>
+          <input id="searchInput" type="search" placeholder="Ник или альянс">
+        </label>
+      </section>
+
+      <nav id="tabs" class="tabs" aria-label="Тип статистики"></nav>
+
+      <section class="status" id="statusBox" hidden></section>
+
+      <section class="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th class="rank" data-sort="position">Место</th>
+              <th data-sort="displayName">Ник</th>
+              <th data-sort="allianceTag">Альянс</th>
+              <th data-sort="score">Очки</th>
+              <th data-sort="universeName">Вселенная</th>
+              <th class="columnFilterHeader" data-filter-key="speed">
+                <div class="columnFilter">
+                  <button class="columnFilterButton" type="button" aria-expanded="false" aria-haspopup="listbox">Eco ▾</button>
+                  <div class="columnFilterMenu" role="listbox" hidden></div>
+                </div>
+              </th>
+              <th class="columnFilterHeader" data-filter-key="speedFleetPeaceful">
+                <div class="columnFilter">
+                  <button class="columnFilterButton" type="button" aria-expanded="false" aria-haspopup="listbox">Мирный флот ▾</button>
+                  <div class="columnFilterMenu" role="listbox" hidden></div>
+                </div>
+              </th>
+              <th class="columnFilterHeader" data-filter-key="speedFleetWar">
+                <div class="columnFilter">
+                  <button class="columnFilterButton" type="button" aria-expanded="false" aria-haspopup="listbox">Боевой флот ▾</button>
+                  <div class="columnFilterMenu" role="listbox" hidden></div>
+                </div>
+              </th>
+              <th class="columnFilterHeader" data-filter-key="debrisPercent">
+                <div class="columnFilter">
+                  <button class="columnFilterButton" type="button" aria-expanded="false" aria-haspopup="listbox">Лом ▾</button>
+                  <div class="columnFilterMenu" role="listbox" hidden></div>
+                </div>
+              </th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </section>
+    </main>
+
+    <script src="app.js" type="module"></script>
+  </body>
+</html>
