@@ -9,11 +9,11 @@ const UNIVERSES_URL = 'https://s1-ru.ogame.gameforge.com/api/universes.xml';
 const HIGHSCORE_TYPES = [
   { id: '0', label: 'Очки' },
   { id: '1', label: 'Экономика' },
-  { id: '3', label: 'Флот' },
-  { id: '2', label: 'Исследования' },
-  { id: '4', label: 'Построено военного' },
+  { id: '3', label: 'Военная мощь' },
   { id: '5', label: 'Уничтожено' },
   { id: '6', label: 'Потеряно' },
+  { id: '4', label: 'Построено' },
+  { id: '2', label: 'Исследования' },
   { id: '7', label: 'Очки чести' }
 ];
 

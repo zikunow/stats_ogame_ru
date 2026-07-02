@@ -17,13 +17,13 @@ const state = {
 
 const API_BASE = new URL('api/', window.location.href);
 const STATIC_DATA_URL = new URL('data/ogame-ru.json', window.location.href);
-const TAB_ORDER = ['0', '1', '3', '2', '4', '5', '6', '7'];
+const TAB_ORDER = ['0', '1', '3', '5', '6', '4', '2', '7'];
 const TAB_LABELS = {
   0: 'Очки',
   1: 'Экономика',
   2: 'Исследования',
-  3: 'Флот',
-  4: 'Построено военного',
+  3: 'Военная мощь',
+  4: 'Построено',
   5: 'Уничтожено',
   6: 'Потеряно',
   7: 'Очки чести'
