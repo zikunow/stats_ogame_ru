@@ -30,6 +30,9 @@ jobs:
         with:
           node-version: 24
 
+      - name: Check JavaScript syntax
+        run: npm run check
+
       - name: Fetch OGame data
         run: npm run fetch
 
@@ -38,6 +41,14 @@ jobs:
           mkdir -p dist/data
           cp -R public/. dist/
           cp data/ogame-ru.json dist/data/ogame-ru.json
+
+      - name: Verify static artifact
+        run: |
+          test -f dist/index.html
+          test -f dist/app.js
+          test -f dist/styles.css
+          test -f dist/data/ogame-ru.json
+          node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync('dist/data/ogame-ru.json','utf8')); if (!data.generatedAt || !data.stats || !data.highscoreTypes?.length) throw new Error('Invalid generated data');"
 
       - name: Configure Pages
         uses: actions/configure-pages@v6
@@ -60,3 +71,11 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+
+      - name: Verify deployed site
+        run: |
+          url="${{ steps.deployment.outputs.page_url }}"
+          curl -fsSL --retry 6 --retry-delay 10 "$url" -o /tmp/pages.html
+          grep -q "OGame RU Dashboard" /tmp/pages.html
+          curl -fsSL --retry 6 --retry-delay 10 "${url%/}/data/ogame-ru.json" -o /tmp/ogame-ru.json
+          node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync('/tmp/ogame-ru.json','utf8')); if (!data.generatedAt || !data.stats || !data.highscoreTypes?.length) throw new Error('Invalid deployed data');"

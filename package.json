@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "check": "node --check public/app.js && node --check src/fetch-data.js",
     "fetch": "node src/fetch-data.js"
   },
   "engines": {
