@@ -1,17 +1,29 @@
-# OGame RU Dashboard
+# Ogame RU Leaderboard
 
-Локальный и статический dashboard по публичной статистике RU-вселенных OGame.
+A static leaderboard dashboard for public OGame RU universe statistics.
 
-## Локальный запуск
+## Features
+
+- Daily data refresh through GitHub Actions.
+- Player rankings across all open RU universes.
+- Tabs for points, economy, fleet, research, military stats, destroyed, lost, and honor points.
+- Universe, top size, search, speed, fleet speed, and debris filters.
+- Static GitHub Pages deployment with no backend required.
+
+## Local Usage
 
 ```powershell
 npm.cmd run fetch
 npm.cmd start
 ```
 
-После запуска откройте `http://localhost:5173`.
+Open:
 
-Настройки локального запуска лежат в `.env`:
+```text
+http://localhost:5173
+```
+
+Local settings are stored in `.env`:
 
 ```env
 PORT=5173
@@ -19,37 +31,37 @@ BASE_PATH=
 UNIVERSE_LIMIT=0
 ```
 
-`UNIVERSE_LIMIT=0` означает сбор всех вселенных. Для быстрой проверки можно поставить `1`.
+`UNIVERSE_LIMIT=0` means all universes. Use `1` for a quick test run.
 
 ## GitHub Pages
 
-Проект готов к публикации через GitHub Pages без backend-сервера.
+The project is ready for GitHub Pages deployment.
 
-Workflow `.github/workflows/deploy-pages.yml`:
+The workflow in `.github/workflows/deploy-pages.yml`:
 
-- запускается при push в `main`;
-- запускается вручную через `workflow_dispatch`;
-- запускается раз в сутки по расписанию `30 11 * * *` UTC;
-- выполняет `npm run fetch`;
-- собирает статическую папку `dist`;
-- публикует `public/*` и свежий `data/ogame-ru.json` на GitHub Pages.
+- runs on pushes to `main`;
+- can be started manually;
+- runs once per day at `11:30 UTC`;
+- fetches fresh OGame API data;
+- builds a static `dist` folder;
+- deploys the site to GitHub Pages.
 
-В репозитории нужно открыть:
+In the GitHub repository, enable:
 
 ```text
 Settings -> Pages -> Build and deployment -> Source -> GitHub Actions
 ```
 
-На GitHub Pages кнопка ручного обновления скрывается, потому что обновление делает GitHub Action.
+On GitHub Pages, the manual refresh button is hidden because updates are handled by GitHub Actions.
 
-## Данные
+## Data
 
-Локально данные сохраняются в:
+Local data is stored in:
 
 ```text
 data/ogame-ru.json
 ```
 
-Этот файл игнорируется git. На GitHub Pages он создается заново во время workflow.
+This file is ignored by git. GitHub Actions creates it during deployment.
 
-Текущая версия хранит только последний снимок данных. История изменений очков пока не сохраняется.
+The current version stores only the latest data snapshot. Historical score tracking is not implemented yet.
