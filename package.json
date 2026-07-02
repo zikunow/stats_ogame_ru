@@ -4,8 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "fetch": "node src/fetch-data.js",
-    "start": "node src/server.js"
+    "fetch": "node src/fetch-data.js"
   },
   "engines": {
     "node": ">=20"

@@ -1,9 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadEnv } from './env.js';
-
-loadEnv();
 
 const ROOT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const DATA_FILE = resolve(ROOT_DIR, 'data', 'ogame-ru.json');
