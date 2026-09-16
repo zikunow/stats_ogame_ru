@@ -15,7 +15,11 @@
         </div>
         <div class="topbarActions">
           <div class="settings">
-            <button id="columnSettingsButton" type="button" aria-expanded="false" aria-controls="columnSettingsPanel">Столбцы</button>
+            <button id="columnSettingsButton" class="settingsButton" type="button" aria-expanded="false" aria-controls="columnSettingsPanel">
+              <span class="settingsIcon" aria-hidden="true"></span>
+              <span>Столбцы</span>
+              <span class="settingsChevron" aria-hidden="true">▾</span>
+            </button>
             <div id="columnSettingsPanel" class="settingsPanel" hidden>
               <div class="settingsTitle">Показать столбцы</div>
               <div id="columnSettings" class="settingsList"></div>

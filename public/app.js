@@ -161,6 +161,8 @@ function renderColumnSettings() {
   }).join('');
 }
 
+renderColumnSettings();
+
 function escapeHtml(value = '') {
   return value
     .replaceAll('&', '&amp;')
@@ -275,6 +277,16 @@ function render() {
   updateColumnVisibility();
 }
 
+elements.columnSettingsButton.addEventListener('click', (event) => {
+  event.stopPropagation();
+  setColumnSettingsOpen(elements.columnSettingsPanel.hidden);
+  closeColumnMenus();
+});
+
+elements.columnSettingsPanel.addEventListener('click', (event) => {
+  event.stopPropagation();
+});
+
 elements.tabs.addEventListener('click', (event) => {
   const tab = event.target.closest('.tab');
   if (!tab) return;
@@ -289,14 +301,6 @@ elements.universeFilter.addEventListener('change', (event) => {
 });
 
 document.addEventListener('click', (event) => {
-  if (event.target.closest('#columnSettingsButton')) {
-    const isOpen = elements.columnSettingsPanel.hidden;
-    setColumnSettingsOpen(isOpen);
-    return;
-  }
-
-  if (event.target.closest('#columnSettingsPanel')) return;
-
   const filterButton = event.target.closest('.columnFilterButton');
   if (filterButton) {
     event.stopPropagation();
