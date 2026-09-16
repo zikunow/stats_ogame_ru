@@ -13,7 +13,16 @@
           <h1>OGame RU Dashboard</h1>
           <p id="metaLine">Загрузка данных...</p>
         </div>
-        <button id="refreshButton" type="button">Обновить</button>
+        <div class="topbarActions">
+          <div class="settings">
+            <button id="columnSettingsButton" type="button" aria-expanded="false" aria-controls="columnSettingsPanel">Столбцы</button>
+            <div id="columnSettingsPanel" class="settingsPanel" hidden>
+              <div class="settingsTitle">Показать столбцы</div>
+              <div id="columnSettings" class="settingsList"></div>
+            </div>
+          </div>
+          <button id="refreshButton" type="button">Обновить</button>
+        </div>
       </header>
 
       <section class="toolbar" aria-label="Фильтры">
@@ -44,31 +53,31 @@
         <table>
           <thead>
             <tr>
-              <th class="rank" data-sort="rank">Место</th>
-              <th data-sort="displayName">Ник</th>
-              <th data-sort="allianceTag">Альянс</th>
-              <th data-sort="score">Очки</th>
-              <th data-sort="universeName">Вселенная</th>
-              <th data-sort="position">Топ вселенной</th>
-              <th class="columnFilterHeader" data-filter-key="speed">
+              <th class="rank" data-column="rank" data-sort="rank">Место</th>
+              <th data-column="displayName" data-sort="displayName">Ник</th>
+              <th data-column="allianceTag" data-sort="allianceTag">Альянс</th>
+              <th data-column="score" data-sort="score">Очки</th>
+              <th data-column="universeName" data-sort="universeName">Вселенная</th>
+              <th data-column="position" data-sort="position">Топ вселенной</th>
+              <th class="columnFilterHeader" data-column="speed" data-filter-key="speed">
                 <div class="columnFilter">
                   <button class="columnFilterButton" type="button" aria-expanded="false" aria-haspopup="listbox">Eco ▾</button>
                   <div class="columnFilterMenu" role="listbox" hidden></div>
                 </div>
               </th>
-              <th class="columnFilterHeader" data-filter-key="speedFleetPeaceful">
+              <th class="columnFilterHeader" data-column="speedFleetPeaceful" data-filter-key="speedFleetPeaceful">
                 <div class="columnFilter">
                   <button class="columnFilterButton" type="button" aria-expanded="false" aria-haspopup="listbox">Мирный флот ▾</button>
                   <div class="columnFilterMenu" role="listbox" hidden></div>
                 </div>
               </th>
-              <th class="columnFilterHeader" data-filter-key="speedFleetWar">
+              <th class="columnFilterHeader" data-column="speedFleetWar" data-filter-key="speedFleetWar">
                 <div class="columnFilter">
                   <button class="columnFilterButton" type="button" aria-expanded="false" aria-haspopup="listbox">Боевой флот ▾</button>
                   <div class="columnFilterMenu" role="listbox" hidden></div>
                 </div>
               </th>
-              <th class="columnFilterHeader" data-filter-key="debrisPercent">
+              <th class="columnFilterHeader" data-column="debrisPercent" data-filter-key="debrisPercent">
                 <div class="columnFilter">
                   <button class="columnFilterButton" type="button" aria-expanded="false" aria-haspopup="listbox">Лом ▾</button>
                   <div class="columnFilterMenu" role="listbox" hidden></div>

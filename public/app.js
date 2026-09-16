@@ -28,10 +28,27 @@ const TAB_LABELS = {
   6: 'Потеряно',
   7: 'Очки чести'
 };
+const COLUMN_STORAGE_KEY = 'ogame-ru-visible-columns';
+const TABLE_COLUMNS = [
+  { key: 'rank', label: 'Место' },
+  { key: 'displayName', label: 'Ник' },
+  { key: 'allianceTag', label: 'Альянс' },
+  { key: 'score', label: 'Очки' },
+  { key: 'universeName', label: 'Вселенная' },
+  { key: 'position', label: 'Топ вселенной' },
+  { key: 'speed', label: 'Eco' },
+  { key: 'speedFleetPeaceful', label: 'Мирный флот' },
+  { key: 'speedFleetWar', label: 'Боевой флот' },
+  { key: 'debrisPercent', label: 'Лом' }
+];
+const DEFAULT_VISIBLE_COLUMNS = TABLE_COLUMNS.map((column) => column.key);
 
 const elements = {
   metaLine: document.querySelector('#metaLine'),
   refreshButton: document.querySelector('#refreshButton'),
+  columnSettingsButton: document.querySelector('#columnSettingsButton'),
+  columnSettingsPanel: document.querySelector('#columnSettingsPanel'),
+  columnSettings: document.querySelector('#columnSettings'),
   universeFilter: document.querySelector('#universeFilter'),
   columnFilterHeaders: document.querySelectorAll('.columnFilterHeader'),
   limitFilter: document.querySelector('#limitFilter'),
@@ -41,6 +58,8 @@ const elements = {
   tableBody: document.querySelector('#tableBody'),
   headers: document.querySelectorAll('th[data-sort]')
 };
+
+state.visibleColumns = loadVisibleColumns();
 
 function formatNumber(value) {
   return new Intl.NumberFormat('ru-RU').format(value);
@@ -64,6 +83,21 @@ function setStatus(message, type = 'info') {
   elements.statusBox.hidden = false;
   elements.statusBox.textContent = message;
   elements.statusBox.className = `status${type === 'error' ? ' error' : ''}`;
+}
+
+function loadVisibleColumns() {
+  try {
+    const savedColumns = JSON.parse(localStorage.getItem(COLUMN_STORAGE_KEY) || '[]');
+    const allowedColumns = new Set(TABLE_COLUMNS.map((column) => column.key));
+    const visibleColumns = savedColumns.filter((column) => allowedColumns.has(column));
+    return visibleColumns.length > 0 ? visibleColumns : DEFAULT_VISIBLE_COLUMNS;
+  } catch {
+    return DEFAULT_VISIBLE_COLUMNS;
+  }
+}
+
+function saveVisibleColumns() {
+  localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(state.visibleColumns));
 }
 
 async function loadData() {
@@ -107,7 +141,24 @@ function renderStaticControls() {
   ].join('');
 
   elements.universeFilter.innerHTML = universeOptions;
+  renderColumnSettings();
   renderColumnFilterMenus();
+}
+
+function renderColumnSettings() {
+  const visibleSet = new Set(state.visibleColumns);
+  const checkedCount = state.visibleColumns.length;
+
+  elements.columnSettings.innerHTML = TABLE_COLUMNS.map((column) => {
+    const checked = visibleSet.has(column.key) ? ' checked' : '';
+    const disabled = checkedCount === 1 && visibleSet.has(column.key) ? ' disabled' : '';
+    return `
+      <label>
+        <input type="checkbox" value="${column.key}"${checked}${disabled}>
+        <span>${escapeHtml(column.label)}</span>
+      </label>
+    `;
+  }).join('');
 }
 
 function escapeHtml(value = '') {
@@ -209,18 +260,19 @@ function render() {
 
   elements.tableBody.innerHTML = rows.map((row) => `
     <tr>
-      <td class="rank">${formatNumber(row.rank)}</td>
-      <td class="${row.isVacation ? 'vacation' : ''}">${escapeHtml(row.displayName)}</td>
-      <td>${row.allianceTag ? escapeHtml(row.allianceTag) : '<span class="muted">-</span>'}</td>
-      <td>${formatNumber(row.score)}</td>
-      <td>${escapeHtml(row.universeName)}</td>
-      <td>${formatNumber(row.position)}</td>
-      <td>${formatNumber(row.speed)}x</td>
-      <td>${formatNumber(row.speedFleetPeaceful)}x</td>
-      <td>${formatNumber(row.speedFleetWar)}x</td>
-      <td>${formatNumber(row.debrisPercent)}%</td>
+      <td class="rank" data-column="rank">${formatNumber(row.rank)}</td>
+      <td data-column="displayName" class="${row.isVacation ? 'vacation' : ''}">${escapeHtml(row.displayName)}</td>
+      <td data-column="allianceTag">${row.allianceTag ? escapeHtml(row.allianceTag) : '<span class="muted">-</span>'}</td>
+      <td data-column="score">${formatNumber(row.score)}</td>
+      <td data-column="universeName">${escapeHtml(row.universeName)}</td>
+      <td data-column="position">${formatNumber(row.position)}</td>
+      <td data-column="speed">${formatNumber(row.speed)}x</td>
+      <td data-column="speedFleetPeaceful">${formatNumber(row.speedFleetPeaceful)}x</td>
+      <td data-column="speedFleetWar">${formatNumber(row.speedFleetWar)}x</td>
+      <td data-column="debrisPercent">${formatNumber(row.debrisPercent)}%</td>
     </tr>
   `).join('');
+  updateColumnVisibility();
 }
 
 elements.tabs.addEventListener('click', (event) => {
@@ -237,9 +289,18 @@ elements.universeFilter.addEventListener('change', (event) => {
 });
 
 document.addEventListener('click', (event) => {
+  if (event.target.closest('#columnSettingsButton')) {
+    const isOpen = elements.columnSettingsPanel.hidden;
+    setColumnSettingsOpen(isOpen);
+    return;
+  }
+
+  if (event.target.closest('#columnSettingsPanel')) return;
+
   const filterButton = event.target.closest('.columnFilterButton');
   if (filterButton) {
     event.stopPropagation();
+    setColumnSettingsOpen(false);
     const header = filterButton.closest('.columnFilterHeader');
     const menu = header.querySelector('.columnFilterMenu');
     setColumnMenuOpen(header, menu.hidden);
@@ -257,6 +318,7 @@ document.addEventListener('click', (event) => {
   }
 
   if (event.target.closest('.columnFilter')) return;
+  setColumnSettingsOpen(false);
   closeColumnMenus();
 });
 
@@ -289,9 +351,41 @@ elements.searchInput.addEventListener('input', (event) => {
 
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
+    setColumnSettingsOpen(false);
     closeColumnMenus();
   }
 });
+
+elements.columnSettings.addEventListener('change', (event) => {
+  const checkbox = event.target.closest('input[type="checkbox"]');
+  if (!checkbox) return;
+
+  const visibleColumns = new Set(state.visibleColumns);
+  if (checkbox.checked) {
+    visibleColumns.add(checkbox.value);
+  } else if (visibleColumns.size > 1) {
+    visibleColumns.delete(checkbox.value);
+  }
+
+  state.visibleColumns = TABLE_COLUMNS
+    .map((column) => column.key)
+    .filter((key) => visibleColumns.has(key));
+  saveVisibleColumns();
+  renderColumnSettings();
+  updateColumnVisibility();
+});
+
+function setColumnSettingsOpen(isOpen) {
+  elements.columnSettingsPanel.hidden = !isOpen;
+  elements.columnSettingsButton.setAttribute('aria-expanded', String(isOpen));
+}
+
+function updateColumnVisibility() {
+  const visibleColumns = new Set(state.visibleColumns);
+  document.querySelectorAll('[data-column]').forEach((cell) => {
+    cell.hidden = !visibleColumns.has(cell.dataset.column);
+  });
+}
 
 function applyUniverseFilter(universeId) {
   state.universe = universeId;
