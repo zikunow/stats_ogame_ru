@@ -216,9 +216,12 @@ input {
 
 .tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  overflow-x: auto;
-  padding-bottom: 10px;
+  overflow: visible;
+  position: relative;
+  z-index: 5;
+  padding-bottom: 14px;
   margin-bottom: 8px;
 }
 
@@ -252,7 +255,7 @@ input {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  z-index: 15;
+  z-index: 30;
   width: 210px;
   max-height: 280px;
   overflow: auto;
