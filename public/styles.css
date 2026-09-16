@@ -152,7 +152,7 @@ input {
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 980px;
+  min-width: 1080px;
 }
 
 thead {

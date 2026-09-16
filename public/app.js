@@ -138,6 +138,11 @@ function getVisibleRows() {
       .map((row, index) => [`${row.universeId}:${row.playerId}`, index + 1])
   );
 
+  rows = rows.map((row, index) => ({
+    ...row,
+    rank: rankByPlayer.get(`${row.universeId}:${row.playerId}`) || index + 1
+  }));
+
   if (query) {
     rows = rows.filter((row) => (
       row.displayName.toLowerCase().includes(query)
@@ -152,10 +157,7 @@ function getVisibleRows() {
     rows = rows.slice(0, Number(state.limit));
   }
 
-  return rows.map((row, index) => ({
-    ...row,
-    rank: rankByPlayer.get(`${row.universeId}:${row.playerId}`) || index + 1
-  }));
+  return rows;
 }
 
 function compareTopRankRows(a, b) {
@@ -212,6 +214,7 @@ function render() {
       <td>${row.allianceTag ? escapeHtml(row.allianceTag) : '<span class="muted">-</span>'}</td>
       <td>${formatNumber(row.score)}</td>
       <td>${escapeHtml(row.universeName)}</td>
+      <td>${formatNumber(row.position)}</td>
       <td>${formatNumber(row.speed)}x</td>
       <td>${formatNumber(row.speedFleetPeaceful)}x</td>
       <td>${formatNumber(row.speedFleetWar)}x</td>
