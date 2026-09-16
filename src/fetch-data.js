@@ -18,9 +18,11 @@ const HIGHSCORE_TYPES = [
 ];
 
 const REQUEST_TIMEOUT_MS = 30000;
-const UNIVERSE_CONCURRENCY = 4;
-const FETCH_RETRIES = 3;
-const RETRY_DELAY_MS = 900;
+const UNIVERSE_CONCURRENCY = 2;
+const FETCH_RETRIES = 5;
+const RETRY_DELAY_MS = 1500;
+const UNIVERSE_RETRIES = 3;
+const UNIVERSE_RETRY_DELAY_MS = 5000;
 
 function decodeXml(value = '') {
   return value
@@ -225,6 +227,18 @@ async function fetchUniverse(universeRef) {
   };
 }
 
+async function fetchUniverseWithRetry(universeRef, attempt = 1) {
+  try {
+    return await fetchUniverse(universeRef);
+  } catch (error) {
+    if (attempt < UNIVERSE_RETRIES) {
+      await delay(UNIVERSE_RETRY_DELAY_MS * attempt);
+      return fetchUniverseWithRetry(universeRef, attempt + 1);
+    }
+    throw error;
+  }
+}
+
 async function mapWithConcurrency(items, limit, mapper) {
   const results = new Array(items.length);
   let nextIndex = 0;
@@ -251,7 +265,7 @@ export async function buildDashboardData({ universeLimit = 0 } = {}) {
 
   const results = await mapWithConcurrency(universeRefs, UNIVERSE_CONCURRENCY, async (universeRef) => {
     try {
-      return await fetchUniverse(universeRef);
+      return await fetchUniverseWithRetry(universeRef);
     } catch (error) {
       return {
         universe: {
