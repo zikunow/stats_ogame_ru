@@ -4,12 +4,14 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - "data/**"
   schedule:
     - cron: "0 2 * * *"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -34,13 +36,28 @@ jobs:
         run: npm run check
 
       - name: Fetch OGame data
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: npm run fetch
+
+      - name: Commit fetched data
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/ogame-ru.json data/history/
+          if git diff --cached --quiet; then
+            echo "No data changes to commit"
+          else
+            git commit -m "Update OGame data"
+            git push
+          fi
 
       - name: Build static site
         run: |
           mkdir -p dist/data
           cp -R public/. dist/
           cp data/ogame-ru.json dist/data/ogame-ru.json
+          if [ -d data/history ]; then cp -R data/history dist/data/history; fi
 
       - name: Verify static artifact
         run: |
@@ -48,6 +65,7 @@ jobs:
           test -f dist/app.js
           test -f dist/styles.css
           test -f dist/data/ogame-ru.json
+          test -f dist/data/history/index.json
           node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync('dist/data/ogame-ru.json','utf8')); if (!data.generatedAt || !data.stats || !data.highscoreTypes?.length) throw new Error('Invalid generated data');"
 
       - name: Configure Pages

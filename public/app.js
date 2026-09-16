@@ -12,22 +12,37 @@ const state = {
   query: '',
   sortKey: 'score',
   sortDirection: 'desc',
-  dataSource: 'api'
+  dataSource: 'api',
+  historyDate: 'latest',
+  historyIndex: null
 };
 
 const API_BASE = new URL('api/', window.location.href);
 const STATIC_DATA_URL = new URL('data/ogame-ru.json', window.location.href);
-const TAB_ORDER = ['0', '1', '3', '5', '6', '4', '2', '7'];
+const HISTORY_INDEX_URL = new URL('data/history/index.json', window.location.href);
+const TAB_ORDER = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'];
 const TAB_LABELS = {
   0: 'Очки',
   1: 'Экономика',
   2: 'Исследования',
-  3: 'Военная мощь',
+  3: 'Боевая мощь',
   4: 'Построено',
   5: 'Уничтожено',
   6: 'Потеряно',
-  7: 'Очки чести'
+  7: 'Очки чести',
+  8: 'Формы жизни',
+  9: 'Здания ФЖ',
+  10: 'Технологии ФЖ',
+  11: 'Артефакты'
 };
+const STAT_GROUPS = [
+  { id: '0', label: 'Очки' },
+  { id: '1', label: 'Экономика' },
+  { id: '2', label: 'Исследования' },
+  { label: 'Боевая мощь', types: ['3', '4', '5', '6'] },
+  { id: '7', label: 'Очки чести' },
+  { label: 'Формы жизни', types: ['8', '9', '10', '11'] }
+];
 const COLUMN_STORAGE_KEY = 'ogame-ru-visible-columns';
 const TABLE_COLUMNS = [
   { key: 'rank', label: 'Место' },
@@ -52,11 +67,11 @@ const elements = {
   universeFilter: document.querySelector('#universeFilter'),
   columnFilterHeaders: document.querySelectorAll('.columnFilterHeader'),
   limitFilter: document.querySelector('#limitFilter'),
+  historyFilter: document.querySelector('#historyFilter'),
   searchInput: document.querySelector('#searchInput'),
   tabs: document.querySelector('#tabs'),
   statusBox: document.querySelector('#statusBox'),
-  tableBody: document.querySelector('#tableBody'),
-  headers: document.querySelectorAll('th[data-sort]')
+  tableBody: document.querySelector('#tableBody')
 };
 
 state.visibleColumns = loadVisibleColumns();
@@ -100,13 +115,20 @@ function saveVisibleColumns() {
   localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(state.visibleColumns));
 }
 
-async function loadData() {
-  let response = await fetch(new URL('data', API_BASE), { cache: 'no-store' });
+async function loadData(historyDate = state.historyDate) {
+  let response;
 
-  if (!response.ok) {
-    response = await fetch(STATIC_DATA_URL, { cache: 'no-store' });
+  if (historyDate !== 'latest') {
+    response = await fetch(new URL(`data/history/${historyDate}.json`, window.location.href), { cache: 'no-store' });
     state.dataSource = 'static';
   } else {
+    response = await fetch(new URL('data', API_BASE), { cache: 'no-store' });
+  }
+
+  if (historyDate === 'latest' && !response.ok) {
+    response = await fetch(STATIC_DATA_URL, { cache: 'no-store' });
+    state.dataSource = 'static';
+  } else if (historyDate === 'latest') {
     state.dataSource = 'api';
   }
 
@@ -116,18 +138,30 @@ async function loadData() {
     throw new Error(payload.error || 'Не удалось загрузить данные');
   }
 
+  state.historyDate = historyDate;
   state.data = payload;
+  await loadHistoryIndex();
   renderStaticControls();
   render();
 }
 
-function renderStaticControls() {
-  const orderedTypes = [...state.data.highscoreTypes].sort((a, b) => {
-    return TAB_ORDER.indexOf(a.id) - TAB_ORDER.indexOf(b.id);
-  });
+async function loadHistoryIndex() {
+  if (state.historyIndex) return;
 
-  elements.tabs.innerHTML = orderedTypes
-    .map((type) => `<button class="tab" type="button" data-type="${type.id}">${TAB_LABELS[type.id] || type.label}</button>`)
+  try {
+    const response = await fetch(HISTORY_INDEX_URL, { cache: 'no-store' });
+    if (response.ok) {
+      state.historyIndex = await response.json();
+    }
+  } catch {
+    state.historyIndex = { latest: '', snapshots: [] };
+  }
+}
+
+function renderStaticControls() {
+  const availableTypes = new Set((state.data.highscoreTypes || []).map((type) => type.id));
+  elements.tabs.innerHTML = STAT_GROUPS
+    .map((group) => renderStatControl(group, availableTypes))
     .join('');
 
   const universeOptions = [
@@ -141,8 +175,56 @@ function renderStaticControls() {
   ].join('');
 
   elements.universeFilter.innerHTML = universeOptions;
+  renderHistoryFilter();
   renderColumnSettings();
   renderColumnFilterMenus();
+}
+
+function renderStatControl(group, availableTypes) {
+  if (group.id) {
+    if (!availableTypes.has(group.id)) return '';
+    return `<button class="tab" type="button" data-type="${group.id}">${TAB_LABELS[group.id] || group.label}</button>`;
+  }
+
+  const types = group.types.filter((type) => availableTypes.has(type));
+  if (types.length === 0) return '';
+  const isActive = types.includes(state.activeType);
+  const activeLabel = isActive ? TAB_LABELS[state.activeType] : group.label;
+
+  return `
+    <div class="statGroup">
+      <button class="tab statGroupButton${isActive ? ' active' : ''}" type="button" aria-expanded="false">
+        <span>${escapeHtml(activeLabel)}</span>
+        <span class="settingsChevron" aria-hidden="true">▾</span>
+      </button>
+      <div class="statMenu" hidden>
+        ${types.map((type) => `
+          <button class="statOption${type === state.activeType ? ' selected' : ''}" type="button" data-type="${type}">
+            ${escapeHtml(TAB_LABELS[type])}
+          </button>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderHistoryFilter() {
+  const snapshots = state.historyIndex?.snapshots || [];
+  elements.historyFilter.innerHTML = [
+    '<option value="latest">Актуальные</option>',
+    ...snapshots.map((snapshot) => (
+      `<option value="${snapshot}">${formatHistoryDate(snapshot)}</option>`
+    ))
+  ].join('');
+  elements.historyFilter.value = state.historyDate;
+}
+
+function formatHistoryDate(value) {
+  return new Intl.DateTimeFormat('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  }).format(new Date(`${value}T00:00:00`));
 }
 
 function renderColumnSettings() {
@@ -243,7 +325,7 @@ function render() {
   elements.metaLine.textContent = `Обновлено ${formatDate(state.data.generatedAt)} · вселенных ${okUniverses}/${state.data.universes.length} · строк ${formatNumber(totalRows)}`;
   setStatus(failedUniverses > 0 ? `Не удалось скачать ${failedUniverses} вселенных. Остальные данные доступны.` : '');
 
-  elements.tabs.querySelectorAll('.tab').forEach((tab) => {
+  elements.tabs.querySelectorAll('.tab[data-type]').forEach((tab) => {
     tab.classList.toggle('active', tab.dataset.type === state.activeType);
   });
 
@@ -251,14 +333,6 @@ function render() {
   elements.refreshButton.hidden = state.dataSource === 'static';
   renderColumnFilterMenus();
   updateColumnFilterMenus();
-
-  elements.headers.forEach((header) => {
-    const marker = header.dataset.sort === state.sortKey
-      ? (state.sortDirection === 'asc' ? ' ↑' : ' ↓')
-      : '';
-    header.textContent = `${header.dataset.originalLabel || header.textContent.replace(/[ ↑↓]+$/, '')}${marker}`;
-    header.dataset.originalLabel = header.dataset.originalLabel || header.textContent.replace(/[ ↑↓]+$/, '');
-  });
 
   elements.tableBody.innerHTML = rows.map((row) => `
     <tr>
@@ -280,6 +354,7 @@ function render() {
 elements.columnSettingsButton.addEventListener('click', (event) => {
   event.stopPropagation();
   setColumnSettingsOpen(elements.columnSettingsPanel.hidden);
+  closeStatMenus();
   closeColumnMenus();
 });
 
@@ -288,12 +363,28 @@ elements.columnSettingsPanel.addEventListener('click', (event) => {
 });
 
 elements.tabs.addEventListener('click', (event) => {
+  const groupButton = event.target.closest('.statGroupButton');
+  if (groupButton) {
+    event.stopPropagation();
+    const group = groupButton.closest('.statGroup');
+    const menu = group.querySelector('.statMenu');
+    setStatMenuOpen(group, menu.hidden);
+    setColumnSettingsOpen(false);
+    closeColumnMenus();
+    return;
+  }
+
+  const option = event.target.closest('.statOption');
+  if (option) {
+    event.stopPropagation();
+    applyStatType(option.dataset.type);
+    closeStatMenus();
+    return;
+  }
+
   const tab = event.target.closest('.tab');
   if (!tab) return;
-  state.activeType = tab.dataset.type;
-  state.sortKey = 'score';
-  state.sortDirection = 'desc';
-  render();
+  applyStatType(tab.dataset.type);
 });
 
 elements.universeFilter.addEventListener('change', (event) => {
@@ -308,6 +399,7 @@ document.addEventListener('click', (event) => {
     const header = filterButton.closest('.columnFilterHeader');
     const menu = header.querySelector('.columnFilterMenu');
     setColumnMenuOpen(header, menu.hidden);
+    closeStatMenus();
     return;
   }
 
@@ -324,6 +416,7 @@ document.addEventListener('click', (event) => {
   if (event.target.closest('.columnFilter')) return;
   setColumnSettingsOpen(false);
   closeColumnMenus();
+  closeStatMenus();
 });
 
 elements.columnFilterHeaders.forEach((header) => {
@@ -348,6 +441,19 @@ elements.limitFilter.addEventListener('change', (event) => {
   render();
 });
 
+elements.historyFilter.addEventListener('change', async (event) => {
+  elements.historyFilter.disabled = true;
+  setStatus('Загружаю снимок данных...');
+  try {
+    await loadData(event.target.value);
+    setStatus('');
+  } catch (error) {
+    setStatus(error.message, 'error');
+  } finally {
+    elements.historyFilter.disabled = false;
+  }
+});
+
 elements.searchInput.addEventListener('input', (event) => {
   state.query = event.target.value;
   render();
@@ -357,6 +463,7 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     setColumnSettingsOpen(false);
     closeColumnMenus();
+    closeStatMenus();
   }
 });
 
@@ -394,16 +501,18 @@ function updateColumnVisibility() {
 function applyUniverseFilter(universeId) {
   state.universe = universeId;
   normalizeColumnFilters();
-  state.sortKey = 'score';
-  state.sortDirection = 'desc';
   render();
 }
 
 function applyColumnFilter(key, value) {
   state.columnFilters[key] = value;
   normalizeColumnFilters(key);
-  state.sortKey = 'score';
-  state.sortDirection = 'desc';
+  render();
+}
+
+function applyStatType(type) {
+  if (!type || type === state.activeType) return;
+  state.activeType = type;
   render();
 }
 
@@ -511,6 +620,20 @@ function closeColumnMenus() {
   elements.columnFilterHeaders.forEach((header) => setColumnMenuOpen(header, false));
 }
 
+function setStatMenuOpen(activeGroup, isOpen) {
+  document.querySelectorAll('.statGroup').forEach((group) => {
+    const shouldOpen = group === activeGroup && isOpen;
+    const menu = group.querySelector('.statMenu');
+    const button = group.querySelector('.statGroupButton');
+    menu.hidden = !shouldOpen;
+    button.setAttribute('aria-expanded', String(shouldOpen));
+  });
+}
+
+function closeStatMenus() {
+  document.querySelectorAll('.statGroup').forEach((group) => setStatMenuOpen(group, false));
+}
+
 function updateColumnFilterMenus() {
   elements.columnFilterHeaders.forEach((header) => {
     const key = header.dataset.filterKey;
@@ -529,20 +652,6 @@ function updateColumnFilterMenus() {
     });
   });
 }
-
-elements.headers.forEach((header) => {
-  header.dataset.originalLabel = header.textContent;
-  header.addEventListener('click', () => {
-    const nextKey = header.dataset.sort;
-    if (state.sortKey === nextKey) {
-      state.sortDirection = state.sortDirection === 'asc' ? 'desc' : 'asc';
-    } else {
-      state.sortKey = nextKey;
-      state.sortDirection = ['score', 'speed', 'speedFleetPeaceful', 'speedFleetWar', 'debrisPercent'].includes(nextKey) ? 'desc' : 'asc';
-    }
-    render();
-  });
-});
 
 elements.refreshButton.addEventListener('click', async () => {
   elements.refreshButton.disabled = true;

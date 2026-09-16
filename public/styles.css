@@ -190,7 +190,7 @@ p {
 
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(180px, 260px) minmax(120px, 160px) minmax(220px, 1fr);
+  grid-template-columns: minmax(180px, 260px) minmax(100px, 130px) minmax(150px, 180px) minmax(220px, 1fr);
   gap: 12px;
   align-items: end;
   margin-bottom: 14px;
@@ -222,6 +222,11 @@ input {
   margin-bottom: 8px;
 }
 
+.statGroup {
+  flex: 0 0 auto;
+  position: relative;
+}
+
 .tab {
   flex: 0 0 auto;
   min-height: 38px;
@@ -235,6 +240,45 @@ input {
 
 .tab.active {
   border-color: var(--accent);
+  background: #e8f4f1;
+  color: var(--accent-strong);
+}
+
+.statGroupButton {
+  gap: 8px;
+}
+
+.statMenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 15;
+  width: 210px;
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: 0 16px 34px rgba(22, 32, 47, 0.16);
+  padding: 6px;
+}
+
+.statOption {
+  display: block;
+  width: 100%;
+  min-height: 32px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.statOption:hover,
+.statOption.selected {
   background: #e8f4f1;
   color: var(--accent-strong);
 }
@@ -292,7 +336,6 @@ th {
   color: #3a4556;
   font-size: 13px;
   font-weight: 700;
-  cursor: pointer;
   user-select: none;
 }
 

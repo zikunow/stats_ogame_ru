@@ -1,6 +1,5 @@
 .env
 .env.example
-data/ogame-ru.json
 node_modules/
 src/env.js
 src/server.js

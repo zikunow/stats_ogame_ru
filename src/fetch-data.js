@@ -1,20 +1,26 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const DATA_FILE = resolve(ROOT_DIR, 'data', 'ogame-ru.json');
+const HISTORY_DIR = resolve(ROOT_DIR, 'data', 'history');
+const HISTORY_INDEX_FILE = resolve(HISTORY_DIR, 'index.json');
 
 const UNIVERSES_URL = 'https://s1-ru.ogame.gameforge.com/api/universes.xml';
 const HIGHSCORE_TYPES = [
   { id: '0', label: 'Очки' },
   { id: '1', label: 'Экономика' },
-  { id: '3', label: 'Военная мощь' },
+  { id: '2', label: 'Исследования' },
+  { id: '3', label: 'Боевая мощь' },
   { id: '5', label: 'Уничтожено' },
   { id: '6', label: 'Потеряно' },
   { id: '4', label: 'Построено' },
-  { id: '2', label: 'Исследования' },
-  { id: '7', label: 'Очки чести' }
+  { id: '7', label: 'Очки чести' },
+  { id: '8', label: 'Формы жизни' },
+  { id: '9', label: 'Здания ФЖ' },
+  { id: '10', label: 'Технологии ФЖ' },
+  { id: '11', label: 'Артефакты' }
 ];
 
 const REQUEST_TIMEOUT_MS = 30000;
@@ -239,6 +245,14 @@ async function fetchUniverseWithRetry(universeRef, attempt = 1) {
   }
 }
 
+async function readHistoryIndex() {
+  try {
+    return JSON.parse(await readFile(HISTORY_INDEX_FILE, 'utf8'));
+  } catch {
+    return { latest: '', snapshots: [] };
+  }
+}
+
 async function mapWithConcurrency(items, limit, mapper) {
   const results = new Array(items.length);
   let nextIndex = 0;
@@ -316,8 +330,19 @@ export async function buildDashboardData({ universeLimit = 0 } = {}) {
 
 export async function refreshData(options = {}) {
   const data = await buildDashboardData(options);
+  const snapshotDate = data.generatedAt.slice(0, 10);
+  const historyFile = resolve(HISTORY_DIR, `${snapshotDate}.json`);
+
   await mkdir(dirname(DATA_FILE), { recursive: true });
-  await writeFile(DATA_FILE, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+  await mkdir(HISTORY_DIR, { recursive: true });
+  await writeFile(DATA_FILE, `${JSON.stringify(data)}\n`, 'utf8');
+  await writeFile(historyFile, `${JSON.stringify(data)}\n`, 'utf8');
+  const historyIndex = await readHistoryIndex();
+  const snapshots = [...new Set([snapshotDate, ...(historyIndex.snapshots || [])])].sort().reverse();
+  await writeFile(HISTORY_INDEX_FILE, `${JSON.stringify({
+    latest: snapshotDate,
+    snapshots
+  })}\n`, 'utf8');
   return data;
 }
 

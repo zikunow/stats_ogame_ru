@@ -43,6 +43,12 @@
             <option value="all">Все</option>
           </select>
         </label>
+        <label>
+          <span>Дата</span>
+          <select id="historyFilter">
+            <option value="latest">Актуальные</option>
+          </select>
+        </label>
         <label class="search">
           <span>Поиск</span>
           <input id="searchInput" type="search" placeholder="Ник или альянс">
@@ -57,12 +63,12 @@
         <table>
           <thead>
             <tr>
-              <th class="rank" data-column="rank" data-sort="rank">Место</th>
-              <th data-column="displayName" data-sort="displayName">Ник</th>
-              <th data-column="allianceTag" data-sort="allianceTag">Альянс</th>
-              <th data-column="score" data-sort="score">Очки</th>
-              <th data-column="universeName" data-sort="universeName">Вселенная</th>
-              <th data-column="position" data-sort="position">Топ вселенной</th>
+              <th class="rank" data-column="rank">Место</th>
+              <th data-column="displayName">Ник</th>
+              <th data-column="allianceTag">Альянс</th>
+              <th data-column="score">Очки</th>
+              <th data-column="universeName">Вселенная</th>
+              <th data-column="position">Топ вселенной</th>
               <th class="columnFilterHeader" data-column="speed" data-filter-key="speed">
                 <div class="columnFilter">
                   <button class="columnFilterButton" type="button" aria-expanded="false" aria-haspopup="listbox">Eco ▾</button>
