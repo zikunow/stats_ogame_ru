@@ -71,7 +71,9 @@ const elements = {
   searchInput: document.querySelector('#searchInput'),
   tabs: document.querySelector('#tabs'),
   statusBox: document.querySelector('#statusBox'),
-  tableBody: document.querySelector('#tableBody')
+  tableBody: document.querySelector('#tableBody'),
+  scoreHeader: document.querySelector('#scoreHeader'),
+  positionHeader: document.querySelector('#positionHeader')
 };
 
 state.visibleColumns = loadVisibleColumns();
@@ -324,6 +326,8 @@ function render() {
 
   elements.metaLine.textContent = `Обновлено ${formatDate(state.data.generatedAt)} · вселенных ${okUniverses}/${state.data.universes.length} · строк ${formatNumber(totalRows)}`;
   setStatus(failedUniverses > 0 ? `Не удалось скачать ${failedUniverses} вселенных. Остальные данные доступны.` : '');
+  elements.scoreHeader.textContent = TAB_LABELS[state.activeType] || 'Очки';
+  elements.positionHeader.textContent = 'Топ в своей вселенной';
 
   elements.tabs.querySelectorAll('.tab[data-type]').forEach((tab) => {
     tab.classList.toggle('active', tab.dataset.type === state.activeType);
