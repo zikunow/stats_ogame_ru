@@ -28,7 +28,7 @@ const TAB_LABELS = {
   3: 'Боевая мощь',
   4: 'Потеряно',
   5: 'Построено',
-  6: 'Уничтожено',
+  6: 'Уничтожены',
   7: 'Очки чести',
   8: 'Формы жизни',
   9: 'Здания ФЖ',
@@ -191,7 +191,7 @@ function renderStatControl(group, availableTypes) {
   const types = group.types.filter((type) => availableTypes.has(type));
   if (types.length === 0) return '';
   const isActive = types.includes(state.activeType);
-  const activeLabel = isActive ? TAB_LABELS[state.activeType] : group.label;
+  const activeLabel = isActive ? `${group.label} / ${TAB_LABELS[state.activeType]}` : group.label;
 
   return `
     <div class="statGroup">
@@ -517,6 +517,7 @@ function applyColumnFilter(key, value) {
 function applyStatType(type) {
   if (!type || type === state.activeType) return;
   state.activeType = type;
+  renderStaticControls();
   render();
 }
 
