@@ -20,7 +20,7 @@ const state = {
 const API_BASE = new URL('api/', window.location.href);
 const STATIC_DATA_URL = new URL('data/ogame-ru.json', window.location.href);
 const HISTORY_INDEX_URL = new URL('data/history/index.json', window.location.href);
-const TAB_ORDER = ['0', '1', '2', '3', 'defense', 'fleet', '4', '5', '6', '7', '8', '9', '10', '11'];
+const TAB_ORDER = ['0', '1', '2', '3', 'fleet', 'defense', '4', '5', '6', '7', '8', '9', '10', '11'];
 const TAB_LABELS = {
   0: 'Очки',
   1: 'Экономика',
@@ -42,8 +42,8 @@ const STAT_GROUPS = [
   { id: '1', label: 'Экономика' },
   { id: '2', label: 'Исследования' },
   { label: 'Боевая мощь', types: ['3', '5', '6', '4'] },
-  { id: 'defense', label: 'Оборона' },
   { id: 'fleet', label: 'Чистый флот' },
+  { id: 'defense', label: 'Оборона' },
   { id: '7', label: 'Очки чести' },
   { label: 'Формы жизни', types: ['8', '9', '10', '11'] }
 ];
@@ -558,8 +558,8 @@ function addDerivedStats(payload) {
   const highscoreTypes = payload.highscoreTypes || [];
   const availableTypes = new Set(highscoreTypes.map((type) => type.id));
   for (const type of [
-    { id: 'defense', label: TAB_LABELS.defense },
-    { id: 'fleet', label: TAB_LABELS.fleet }
+    { id: 'fleet', label: TAB_LABELS.fleet },
+    { id: 'defense', label: TAB_LABELS.defense }
   ]) {
     if (!availableTypes.has(type.id)) highscoreTypes.push(type);
   }

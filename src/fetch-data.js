@@ -23,8 +23,8 @@ const HIGHSCORE_TYPES = [
   { id: '11', label: 'Артефакты' }
 ];
 const DERIVED_HIGHSCORE_TYPES = [
-  { id: 'defense', label: 'Оборона' },
-  { id: 'fleet', label: 'Чистый флот' }
+  { id: 'fleet', label: 'Чистый флот' },
+  { id: 'defense', label: 'Оборона' }
 ];
 
 const REQUEST_TIMEOUT_MS = 30000;
