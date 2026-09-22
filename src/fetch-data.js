@@ -22,6 +22,10 @@ const HIGHSCORE_TYPES = [
   { id: '10', label: 'Технологии ФЖ' },
   { id: '11', label: 'Артефакты' }
 ];
+const DERIVED_HIGHSCORE_TYPES = [
+  { id: 'defense', label: 'Оборона' },
+  { id: 'fleet', label: 'Чистый флот' }
+];
 
 const REQUEST_TIMEOUT_MS = 30000;
 const UNIVERSE_CONCURRENCY = 2;
@@ -174,6 +178,51 @@ function parseHighscore(xml) {
   }));
 }
 
+function addDerivedStats(stats) {
+  const requiredTypes = ['0', '1', '2', '3'];
+  const scoresByType = Object.fromEntries(requiredTypes.map((type) => [
+    type,
+    new Map(stats[type].map((row) => [`${row.universeId}:${row.playerId}`, row.score]))
+  ]));
+  const defenseRows = [];
+  const fleetRows = [];
+
+  for (const militaryRow of stats['3']) {
+    const key = `${militaryRow.universeId}:${militaryRow.playerId}`;
+    const total = scoresByType['0'].get(key);
+    const economy = scoresByType['1'].get(key);
+    const research = scoresByType['2'].get(key);
+
+    if ([total, economy, research].some((score) => score === undefined)) continue;
+
+    const defense = Math.max(0, economy + research + militaryRow.score - total);
+    defenseRows.push({ ...militaryRow, score: defense });
+    fleetRows.push({ ...militaryRow, score: Math.max(0, militaryRow.score - defense) });
+  }
+
+  stats.defense = rankDerivedRows(defenseRows);
+  stats.fleet = rankDerivedRows(fleetRows);
+}
+
+function rankDerivedRows(rows) {
+  const rowsByUniverse = new Map();
+
+  for (const row of rows) {
+    const universeRows = rowsByUniverse.get(row.universeId) || [];
+    universeRows.push(row);
+    rowsByUniverse.set(row.universeId, universeRows);
+  }
+
+  for (const universeRows of rowsByUniverse.values()) {
+    universeRows.sort((a, b) => b.score - a.score || a.displayName.localeCompare(b.displayName, 'ru'));
+    universeRows.forEach((row, index) => {
+      row.position = index + 1;
+    });
+  }
+
+  return rows;
+}
+
 async function fetchUniverse(universeRef) {
   const base = universeRef.apiBase;
   const serverXml = await fetchXml(`${base}/serverData.xml`);
@@ -315,13 +364,15 @@ export async function buildDashboardData({ universeLimit = 0 } = {}) {
     });
   }
 
+  addDerivedStats(stats);
+
   return {
     generatedAt: new Date().toISOString(),
     source: {
       universesUrl: UNIVERSES_URL,
       category: 1
     },
-    highscoreTypes: HIGHSCORE_TYPES,
+    highscoreTypes: [...HIGHSCORE_TYPES, ...DERIVED_HIGHSCORE_TYPES],
     universes,
     failures,
     stats
