@@ -23,7 +23,8 @@ const HIGHSCORE_TYPES = [
   { id: '11', label: 'Артефакты' }
 ];
 const DERIVED_HIGHSCORE_TYPES = [
-  { id: 'fleet', label: 'Флот' },
+  { id: 'fleet', label: 'Очки флота' },
+  { id: 'ships', label: 'Количество кораблей' },
   { id: 'defense', label: 'Оборона' }
 ];
 
@@ -178,30 +179,37 @@ function parseHighscore(xml) {
   }));
 }
 
-function addDerivedStats(stats) {
-  const requiredTypes = ['0', '1', '2', '3'];
+export function addDerivedStats(stats) {
+  const requiredTypes = ['0', '1', '2', '3', '8'];
   const scoresByType = Object.fromEntries(requiredTypes.map((type) => [
     type,
     new Map(stats[type].map((row) => [`${row.universeId}:${row.playerId}`, row.score]))
   ]));
   const defenseRows = [];
   const fleetRows = [];
+  const shipsRows = [];
 
   for (const militaryRow of stats['3']) {
     const key = `${militaryRow.universeId}:${militaryRow.playerId}`;
     const total = scoresByType['0'].get(key);
     const economy = scoresByType['1'].get(key);
     const research = scoresByType['2'].get(key);
+    const lifeforms = scoresByType['8'].get(key);
 
-    if ([total, economy, research].some((score) => score === undefined)) continue;
+    if (Number.isFinite(militaryRow.ships)) {
+      shipsRows.push({ ...militaryRow, score: militaryRow.ships });
+    }
 
-    const defense = Math.max(0, economy + research + militaryRow.score - total);
+    if ([total, economy, research, lifeforms].some((score) => score === undefined)) continue;
+
+    const defense = Math.max(0, economy + research + militaryRow.score + lifeforms - total);
     defenseRows.push({ ...militaryRow, score: defense });
     fleetRows.push({ ...militaryRow, score: Math.max(0, militaryRow.score - defense) });
   }
 
   stats.defense = rankDerivedRows(defenseRows);
   stats.fleet = rankDerivedRows(fleetRows);
+  stats.ships = rankDerivedRows(shipsRows);
 }
 
 function rankDerivedRows(rows) {

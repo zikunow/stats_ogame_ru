@@ -20,14 +20,15 @@ const state = {
 const API_BASE = new URL('api/', window.location.href);
 const STATIC_DATA_URL = new URL('data/ogame-ru.json', window.location.href);
 const HISTORY_INDEX_URL = new URL('data/history/index.json', window.location.href);
-const TAB_ORDER = ['0', '1', '2', '3', 'fleet', 'defense', '4', '5', '6', '7', '8', '9', '10', '11'];
+const TAB_ORDER = ['0', '1', '2', 'fleet', 'ships', 'defense', '3', '4', '5', '6', '7', '8', '9', '10', '11'];
 const TAB_LABELS = {
   0: 'Очки',
   1: 'Экономика',
   2: 'Исследования',
   3: 'Боевая мощь',
   defense: 'Оборона',
-  fleet: 'Флот',
+  fleet: 'Очки флота',
+  ships: 'Количество кораблей',
   4: 'Потеряно',
   5: 'Построено',
   6: 'Уничтожены',
@@ -41,9 +42,9 @@ const STAT_GROUPS = [
   { id: '0', label: 'Очки' },
   { id: '1', label: 'Экономика' },
   { id: '2', label: 'Исследования' },
-  { label: 'Боевая мощь', types: ['3', '5', '6', '4'] },
-  { id: 'fleet', label: 'Флот' },
+  { label: 'Флот', types: ['fleet', 'ships'] },
   { id: 'defense', label: 'Оборона' },
+  { label: 'Боевая мощь', types: ['3', '5', '6', '4'] },
   { id: '7', label: 'Очки чести' },
   { label: 'Формы жизни', types: ['8', '9', '10', '11'] }
 ];
@@ -145,7 +146,7 @@ async function loadData(historyDate = state.historyDate) {
   }
 
   state.historyDate = historyDate;
-  state.data = addDerivedStats(payload);
+  state.data = payload;
   await loadHistoryIndex();
   renderStaticControls();
   render();
@@ -523,73 +524,6 @@ function applyStatType(type) {
   state.activeType = type;
   renderStaticControls();
   render();
-}
-
-function addDerivedStats(payload) {
-  const requiredTypes = ['0', '1', '2', '3', '8'];
-  if (!requiredTypes.every((type) => Array.isArray(payload.stats?.[type]))) {
-    return payload;
-  }
-
-  const scoresByType = Object.fromEntries(requiredTypes.map((type) => [
-    type,
-    new Map(payload.stats[type].map((row) => [playerKey(row), row.score]))
-  ]));
-  const defenseRows = [];
-  const fleetRows = [];
-
-  for (const militaryRow of payload.stats['3']) {
-    const key = playerKey(militaryRow);
-    const total = scoresByType['0'].get(key);
-    const economy = scoresByType['1'].get(key);
-    const research = scoresByType['2'].get(key);
-    const lifeforms = scoresByType['8'].get(key);
-
-    if ([total, economy, research, lifeforms].some((score) => score === undefined)) continue;
-
-    const defense = Math.max(0, economy + research + militaryRow.score + lifeforms - total);
-    const fleet = Math.max(0, militaryRow.score - defense);
-    defenseRows.push({ ...militaryRow, score: defense });
-    fleetRows.push({ ...militaryRow, score: fleet });
-  }
-
-  payload.stats.defense = rankDerivedRows(defenseRows);
-  payload.stats.fleet = rankDerivedRows(fleetRows);
-
-  const highscoreTypes = payload.highscoreTypes || [];
-  const availableTypes = new Set(highscoreTypes.map((type) => type.id));
-  for (const type of [
-    { id: 'fleet', label: TAB_LABELS.fleet },
-    { id: 'defense', label: TAB_LABELS.defense }
-  ]) {
-    if (!availableTypes.has(type.id)) highscoreTypes.push(type);
-  }
-  payload.highscoreTypes = highscoreTypes;
-
-  return payload;
-}
-
-function playerKey(row) {
-  return `${row.universeId}:${row.playerId}`;
-}
-
-function rankDerivedRows(rows) {
-  const rowsByUniverse = new Map();
-
-  for (const row of rows) {
-    const universeRows = rowsByUniverse.get(row.universeId) || [];
-    universeRows.push(row);
-    rowsByUniverse.set(row.universeId, universeRows);
-  }
-
-  for (const universeRows of rowsByUniverse.values()) {
-    universeRows.sort((a, b) => b.score - a.score || a.displayName.localeCompare(b.displayName, 'ru'));
-    universeRows.forEach((row, index) => {
-      row.position = index + 1;
-    });
-  }
-
-  return rows;
 }
 
 function renderColumnFilterMenus() {
