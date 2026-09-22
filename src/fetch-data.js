@@ -23,7 +23,7 @@ const HIGHSCORE_TYPES = [
   { id: '11', label: 'Артефакты' }
 ];
 const DERIVED_HIGHSCORE_TYPES = [
-  { id: 'fleet', label: 'Чистый флот' },
+  { id: 'fleet', label: 'Флот' },
   { id: 'defense', label: 'Оборона' }
 ];
 

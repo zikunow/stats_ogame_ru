@@ -9,6 +9,11 @@ on:
   schedule:
     - cron: "0 2 * * *"
   workflow_dispatch:
+    inputs:
+      refresh_data:
+        description: 'Обновить данные из API OGame'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -36,9 +41,11 @@ jobs:
         run: npm run check
 
       - name: Fetch OGame data
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data)
         run: npm run fetch
 
       - name: Commit fetched data
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data)
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
