@@ -526,7 +526,7 @@ function applyStatType(type) {
 }
 
 function addDerivedStats(payload) {
-  const requiredTypes = ['0', '1', '2', '3'];
+  const requiredTypes = ['0', '1', '2', '3', '8'];
   if (!requiredTypes.every((type) => Array.isArray(payload.stats?.[type]))) {
     return payload;
   }
@@ -543,10 +543,11 @@ function addDerivedStats(payload) {
     const total = scoresByType['0'].get(key);
     const economy = scoresByType['1'].get(key);
     const research = scoresByType['2'].get(key);
+    const lifeforms = scoresByType['8'].get(key);
 
-    if ([total, economy, research].some((score) => score === undefined)) continue;
+    if ([total, economy, research, lifeforms].some((score) => score === undefined)) continue;
 
-    const defense = Math.max(0, economy + research + militaryRow.score - total);
+    const defense = Math.max(0, economy + research + militaryRow.score + lifeforms - total);
     const fleet = Math.max(0, militaryRow.score - defense);
     defenseRows.push({ ...militaryRow, score: defense });
     fleetRows.push({ ...militaryRow, score: fleet });
