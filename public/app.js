@@ -12,16 +12,13 @@ const state = {
   query: '',
   sortKey: 'score',
   sortDirection: 'desc',
-  dataSource: 'api',
   historyDate: 'latest',
   historyIndex: null,
-  previousData: null,
-  comparisonDate: ''
+  snapshotDate: ''
 };
 
-const API_BASE = new URL('api/', window.location.href);
-const STATIC_DATA_URL = new URL('data/ogame-ru.json', window.location.href);
 const HISTORY_INDEX_URL = new URL('data/history/index.json', window.location.href);
+const statCache = new Map();
 const TAB_ORDER = ['0', '1', '2', 'fleet', 'ships', 'defense', '3', '4', '5', '6', '7', '8', '9', '10', '11'];
 const TAB_LABELS = {
   0: 'Очки',
@@ -68,7 +65,6 @@ const DEFAULT_VISIBLE_COLUMNS = TABLE_COLUMNS.map((column) => column.key);
 
 const elements = {
   metaLine: document.querySelector('#metaLine'),
-  refreshButton: document.querySelector('#refreshButton'),
   columnSettingsButton: document.querySelector('#columnSettingsButton'),
   columnSettingsPanel: document.querySelector('#columnSettingsPanel'),
   columnSettings: document.querySelector('#columnSettings'),
@@ -131,32 +127,20 @@ function saveVisibleColumns() {
 }
 
 async function loadData(historyDate = state.historyDate) {
-  let response;
+  await loadHistoryIndex();
+  const snapshotDate = historyDate === 'latest' ? state.historyIndex.latest : historyDate;
+  if (!snapshotDate) throw new Error('Нет доступных снимков данных');
 
-  if (historyDate !== 'latest') {
-    response = await fetch(new URL(`data/history/${historyDate}.json`, window.location.href), { cache: 'no-store' });
-    state.dataSource = 'static';
-  } else {
-    response = await fetch(new URL('data', API_BASE), { cache: 'no-store' });
-  }
-
-  if (historyDate === 'latest' && !response.ok) {
-    response = await fetch(STATIC_DATA_URL, { cache: 'no-store' });
-    state.dataSource = 'static';
-  } else if (historyDate === 'latest') {
-    state.dataSource = 'api';
-  }
-
+  const response = await fetch(
+    new URL(`data/history/${snapshotDate}/meta.json`, window.location.href)
+  );
+  if (!response.ok) throw new Error('Не удалось загрузить данные');
   const payload = await response.json();
 
-  if (!response.ok) {
-    throw new Error(payload.error || 'Не удалось загрузить данные');
-  }
-
   state.historyDate = historyDate;
-  state.data = payload;
-  await loadHistoryIndex();
-  await loadPreviousData(payload);
+  state.snapshotDate = snapshotDate;
+  state.data = { ...payload, stats: {} };
+  await loadStatData(state.activeType);
   renderStaticControls();
   render();
 }
@@ -165,40 +149,32 @@ async function loadHistoryIndex() {
   if (state.historyIndex) return;
 
   try {
-    const response = await fetch(HISTORY_INDEX_URL, { cache: 'no-store' });
-    if (response.ok) {
-      state.historyIndex = await response.json();
-    }
+    const response = await fetch(HISTORY_INDEX_URL, { cache: 'no-cache' });
+    if (!response.ok) throw new Error('Не удалось загрузить список снимков');
+    state.historyIndex = await response.json();
   } catch {
     state.historyIndex = { latest: '', snapshots: [] };
   }
 }
 
-async function loadPreviousData(currentData) {
-  state.previousData = null;
-  state.comparisonDate = '';
+async function loadStatData(type) {
+  const cacheKey = `${state.snapshotDate}:${type}`;
+  let request = statCache.get(cacheKey);
 
-  const currentDate = state.historyDate === 'latest'
-    ? currentData.generatedAt?.slice(0, 10)
-    : state.historyDate;
-  const previousDate = [...(state.historyIndex?.snapshots || [])]
-    .sort()
-    .reverse()
-    .find((snapshot) => snapshot < currentDate);
-
-  if (!previousDate) return;
-
-  try {
-    const response = await fetch(
-      new URL(`data/history/${previousDate}.json`, window.location.href),
-      { cache: 'no-store' }
-    );
-    if (!response.ok) return;
-    state.previousData = await response.json();
-    state.comparisonDate = previousDate;
-  } catch {
-    // The current ranking remains usable when an older snapshot is unavailable.
+  if (!request) {
+    request = fetch(
+      new URL(`data/history/${state.snapshotDate}/stats/${type}.json`, window.location.href)
+    ).then(async (response) => {
+      if (!response.ok) throw new Error('Не удалось загрузить рейтинг');
+      return response.json();
+    }).catch((error) => {
+      statCache.delete(cacheKey);
+      throw error;
+    });
+    statCache.set(cacheKey, request);
   }
+
+  state.data.stats[type] = await request;
 }
 
 function renderStaticControls() {
@@ -300,20 +276,6 @@ function escapeHtml(value = '') {
 function getVisibleRows() {
   const query = state.query.trim().toLowerCase();
   let rows = state.data.stats[state.activeType] || [];
-  const previousScores = new Map(
-    (state.previousData?.stats?.[state.activeType] || []).map((row) => [
-      `${row.universeId}:${row.playerId}`,
-      row.score
-    ])
-  );
-
-  rows = rows.map((row) => {
-    const previousScore = previousScores.get(`${row.universeId}:${row.playerId}`);
-    return {
-      ...row,
-      scoreDelta: Number.isFinite(previousScore) ? row.score - previousScore : null
-    };
-  });
 
   if (state.universe !== 'all') {
     rows = rows.filter((row) => row.universeId === state.universe);
@@ -390,8 +352,8 @@ function render() {
   elements.scoreSortIndicator.textContent = scoreSortActive ? '↓' : '';
   elements.scoreSortButton.setAttribute('aria-pressed', String(scoreSortActive));
   elements.scoreSortButton.setAttribute('aria-label', `Сортировать «${scoreLabel}» от большего к меньшему`);
-  elements.scoreDeltaHeader.title = state.comparisonDate
-    ? `Изменение относительно ${formatHistoryDate(state.comparisonDate)}`
+  elements.scoreDeltaHeader.title = state.data.comparisonDate
+    ? `Изменение относительно ${formatHistoryDate(state.data.comparisonDate)}`
     : 'Предыдущий снимок недоступен';
   const deltaSortActive = state.sortKey === 'scoreDelta';
   elements.scoreDeltaSortButton.querySelector('.sortIndicator').textContent = deltaSortActive
@@ -409,7 +371,6 @@ function render() {
   });
 
   elements.universeFilter.value = state.universe;
-  elements.refreshButton.hidden = state.dataSource === 'static';
   renderColumnFilterMenus();
   updateColumnFilterMenus();
 
@@ -618,11 +579,22 @@ function applyColumnFilter(key, value) {
   render();
 }
 
-function applyStatType(type) {
+async function applyStatType(type) {
   if (!type || type === state.activeType) return;
+  const previousType = state.activeType;
   state.activeType = type;
   renderStaticControls();
-  render();
+  setStatus(`Загружаю рейтинг «${TAB_LABELS[type] || type}»...`);
+
+  try {
+    await loadStatData(type);
+    render();
+  } catch (error) {
+    state.activeType = previousType;
+    renderStaticControls();
+    render();
+    setStatus(error.message, 'error');
+  }
 }
 
 function renderColumnFilterMenus() {
@@ -761,28 +733,6 @@ function updateColumnFilterMenus() {
     });
   });
 }
-
-elements.refreshButton.addEventListener('click', async () => {
-  elements.refreshButton.disabled = true;
-  elements.refreshButton.textContent = 'Обновление...';
-  setStatus('Скачиваю свежие данные OGame API...');
-
-  try {
-    const response = await fetch(new URL('refresh', API_BASE), { method: 'POST' });
-    const payload = await response.json();
-
-    if (!response.ok || !payload.ok) {
-      throw new Error(payload.error || 'Обновление не удалось');
-    }
-
-    await loadData();
-  } catch (error) {
-    setStatus(error.message, 'error');
-  } finally {
-    elements.refreshButton.disabled = false;
-    elements.refreshButton.textContent = 'Обновить';
-  }
-});
 
 loadData().catch((error) => {
   elements.metaLine.textContent = 'Данные не загружены';

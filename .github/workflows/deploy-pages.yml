@@ -44,12 +44,15 @@ jobs:
         if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data)
         run: npm run fetch
 
+      - name: Check stored data
+        run: npm run check:data
+
       - name: Commit fetched data
         if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data)
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/ogame-ru.json data/history/
+          git add data/history/
           if git diff --cached --quiet; then
             echo "No data changes to commit"
           else
@@ -61,7 +64,6 @@ jobs:
         run: |
           mkdir -p dist/data
           cp -R public/. dist/
-          cp data/ogame-ru.json dist/data/ogame-ru.json
           if [ -d data/history ]; then cp -R data/history dist/data/history; fi
 
       - name: Verify static artifact
@@ -69,9 +71,8 @@ jobs:
           test -f dist/index.html
           test -f dist/app.js
           test -f dist/styles.css
-          test -f dist/data/ogame-ru.json
           test -f dist/data/history/index.json
-          node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync('dist/data/ogame-ru.json','utf8')); if (!data.generatedAt || !data.stats || !data.highscoreTypes?.length) throw new Error('Invalid generated data');"
+          node -e "const fs=require('fs'); const index=JSON.parse(fs.readFileSync('dist/data/history/index.json','utf8')); const base='dist/data/history/'+index.latest; const meta=JSON.parse(fs.readFileSync(base+'/meta.json','utf8')); if (!meta.generatedAt || !meta.highscoreTypes?.length) throw new Error('Invalid metadata'); for (const type of meta.highscoreTypes) { const rows=JSON.parse(fs.readFileSync(base+'/stats/'+type.id+'.json','utf8')); if (!Array.isArray(rows)) throw new Error('Invalid '+type.id+' ranking'); }"
 
       - name: Configure Pages
         uses: actions/configure-pages@v6
@@ -100,5 +101,8 @@ jobs:
           url="${{ steps.deployment.outputs.page_url }}"
           curl -fsSL --retry 6 --retry-delay 10 "$url" -o /tmp/pages.html
           grep -q "OGame RU Dashboard" /tmp/pages.html
-          curl -fsSL --retry 6 --retry-delay 10 "${url%/}/data/ogame-ru.json" -o /tmp/ogame-ru.json
-          node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync('/tmp/ogame-ru.json','utf8')); if (!data.generatedAt || !data.stats || !data.highscoreTypes?.length) throw new Error('Invalid deployed data');"
+          curl -fsSL --retry 6 --retry-delay 10 "${url%/}/data/history/index.json" -o /tmp/history-index.json
+          latest=$(node -e "const fs=require('fs'); process.stdout.write(JSON.parse(fs.readFileSync('/tmp/history-index.json','utf8')).latest)")
+          curl -fsSL --retry 6 --retry-delay 10 "${url%/}/data/history/$latest/meta.json" -o /tmp/meta.json
+          curl -fsSL --retry 6 --retry-delay 10 "${url%/}/data/history/$latest/stats/0.json" -o /tmp/score.json
+          node -e "const fs=require('fs'); const meta=JSON.parse(fs.readFileSync('/tmp/meta.json','utf8')); const rows=JSON.parse(fs.readFileSync('/tmp/score.json','utf8')); if (!meta.generatedAt || !meta.highscoreTypes?.length || !Array.isArray(rows) || !rows.every(row => Object.hasOwn(row, 'scoreDelta'))) throw new Error('Invalid deployed data');"

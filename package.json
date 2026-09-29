@@ -4,8 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check public/app.js && node --check src/fetch-data.js",
-    "fetch": "node src/fetch-data.js"
+    "check": "node --check public/app.js && node --check src/fetch-data.js && node --check src/data-storage.js && node --check scripts/migrate-data.js && node --check scripts/check-data.js",
+    "check:data": "node scripts/check-data.js",
+    "fetch": "node src/fetch-data.js",
+    "migrate:data": "node scripts/migrate-data.js"
   },
   "engines": {
     "node": ">=20"

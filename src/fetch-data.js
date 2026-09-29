@@ -1,11 +1,11 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-
-const ROOT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-export const DATA_FILE = resolve(ROOT_DIR, 'data', 'ogame-ru.json');
-const HISTORY_DIR = resolve(ROOT_DIR, 'data', 'history');
-const HISTORY_INDEX_FILE = resolve(HISTORY_DIR, 'index.json');
+import {
+  addScoreDeltas,
+  readHistoryIndex,
+  readSnapshotStats,
+  writeHistoryIndex,
+  writeSnapshot
+} from './data-storage.js';
 
 const UNIVERSES_URL = 'https://s1-ru.ogame.gameforge.com/api/universes.xml';
 const HIGHSCORE_TYPES = [
@@ -302,14 +302,6 @@ async function fetchUniverseWithRetry(universeRef, attempt = 1) {
   }
 }
 
-async function readHistoryIndex() {
-  try {
-    return JSON.parse(await readFile(HISTORY_INDEX_FILE, 'utf8'));
-  } catch {
-    return { latest: '', snapshots: [] };
-  }
-}
-
 async function mapWithConcurrency(items, limit, mapper) {
   const results = new Array(items.length);
   let nextIndex = 0;
@@ -390,18 +382,21 @@ export async function buildDashboardData({ universeLimit = 0 } = {}) {
 export async function refreshData(options = {}) {
   const data = await buildDashboardData(options);
   const snapshotDate = data.generatedAt.slice(0, 10);
-  const historyFile = resolve(HISTORY_DIR, `${snapshotDate}.json`);
-
-  await mkdir(dirname(DATA_FILE), { recursive: true });
-  await mkdir(HISTORY_DIR, { recursive: true });
-  await writeFile(DATA_FILE, `${JSON.stringify(data)}\n`, 'utf8');
-  await writeFile(historyFile, `${JSON.stringify(data)}\n`, 'utf8');
   const historyIndex = await readHistoryIndex();
   const snapshots = [...new Set([snapshotDate, ...(historyIndex.snapshots || [])])].sort().reverse();
-  await writeFile(HISTORY_INDEX_FILE, `${JSON.stringify({
+  const comparisonDate = snapshots.find((date) => date < snapshotDate) || '';
+  const previousStats = comparisonDate
+    ? await readSnapshotStats(comparisonDate, Object.keys(data.stats))
+    : {};
+
+  addScoreDeltas(data.stats, previousStats);
+  const snapshotDirectory = await writeSnapshot(data, snapshotDate, comparisonDate);
+  await writeHistoryIndex({
     latest: snapshotDate,
     snapshots
-  })}\n`, 'utf8');
+  });
+
+  data.snapshotDirectory = snapshotDirectory;
   return data;
 }
 
@@ -412,7 +407,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   refreshData({ universeLimit })
     .then((data) => {
       const okCount = data.universes.filter((universe) => universe.status === 'ok').length;
-      console.log(`Saved ${DATA_FILE}`);
+      console.log(`Saved ${data.snapshotDirectory}`);
       console.log(`Universes: ${okCount}/${data.universes.length} ok`);
       if (data.failures.length > 0) {
         console.log(`Failures: ${data.failures.map((universe) => universe.id).join(', ')}`);

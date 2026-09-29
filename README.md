@@ -5,6 +5,7 @@ A static GitHub Pages leaderboard for public OGame RU universe statistics.
 ## Features
 
 - Daily data refresh through GitHub Actions.
+- Lazy loading of one ranking at a time.
 - Player rankings across all open RU universes.
 - Tabs for points, economy, fleet, research, military stats, destroyed, lost, and honor points.
 - Universe, top size, search, speed, fleet speed, and debris filters.
@@ -18,7 +19,7 @@ The workflow:
 
 - runs on pushes to `main`;
 - can be started manually;
-- runs once per day at `11:30 UTC`;
+- runs once per day at `02:00 UTC`;
 - fetches fresh OGame API data;
 - builds a static `dist` folder;
 - deploys the site to GitHub Pages.
@@ -37,10 +38,14 @@ https://zikunow.github.io/stats_ogame_ru/
 
 ## Data
 
-GitHub Actions generates:
+GitHub Actions stores every daily snapshot in small files:
 
 ```text
-data/ogame-ru.json
+data/history/index.json
+data/history/YYYY-MM-DD/meta.json
+data/history/YYYY-MM-DD/stats/0.json
+data/history/YYYY-MM-DD/stats/fleet.json
+...
 ```
 
-The repository does not store this generated JSON file. The current version stores only the latest data snapshot during each deployment. Historical score tracking is not implemented yet.
+The browser initially downloads only the metadata and the overall-points ranking. Other rankings are loaded on demand and cached for the rest of the session. Each row already contains its change from the previous available daily snapshot.
