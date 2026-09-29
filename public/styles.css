@@ -342,6 +342,50 @@ th {
   user-select: none;
 }
 
+th.sortableHeader {
+  padding: 0;
+}
+
+.sortableHeader button {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-weight: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+
+.sortableHeader button:hover,
+.sortableHeader button:focus-visible,
+.sortableHeader button[aria-pressed="true"] {
+  background: #dfe8f4;
+}
+
+.sortIndicator {
+  display: inline-block;
+  min-width: 1em;
+}
+
+td.scoreDelta {
+  font-variant-numeric: tabular-nums;
+}
+
+td.scoreDelta.positive {
+  color: var(--accent);
+}
+
+td.scoreDelta.negative {
+  color: var(--danger);
+}
+
+td.scoreDelta.neutral {
+  color: var(--muted);
+}
+
 th.columnFilterHeader {
   cursor: default;
   min-width: 170px;

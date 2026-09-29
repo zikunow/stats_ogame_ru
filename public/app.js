@@ -14,7 +14,9 @@ const state = {
   sortDirection: 'desc',
   dataSource: 'api',
   historyDate: 'latest',
-  historyIndex: null
+  historyIndex: null,
+  previousData: null,
+  comparisonDate: ''
 };
 
 const API_BASE = new URL('api/', window.location.href);
@@ -48,12 +50,13 @@ const STAT_GROUPS = [
   { id: '7', label: 'Очки чести' },
   { label: 'Формы жизни', types: ['8', '9', '10', '11'] }
 ];
-const COLUMN_STORAGE_KEY = 'ogame-ru-visible-columns';
+const COLUMN_STORAGE_KEY = 'ogame-ru-visible-columns-v2';
 const TABLE_COLUMNS = [
   { key: 'rank', label: 'Место' },
   { key: 'displayName', label: 'Ник' },
   { key: 'allianceTag', label: 'Альянс' },
   { key: 'score', label: 'Очки' },
+  { key: 'scoreDelta', label: 'За день' },
   { key: 'universeName', label: 'Вселенная' },
   { key: 'position', label: 'Топ вселенной' },
   { key: 'speed', label: 'Eco' },
@@ -78,6 +81,8 @@ const elements = {
   statusBox: document.querySelector('#statusBox'),
   tableBody: document.querySelector('#tableBody'),
   scoreHeader: document.querySelector('#scoreHeader'),
+  scoreDeltaHeader: document.querySelector('#scoreDeltaHeader'),
+  scoreDeltaSortButton: document.querySelector('#scoreDeltaSortButton'),
   positionHeader: document.querySelector('#positionHeader')
 };
 
@@ -148,6 +153,7 @@ async function loadData(historyDate = state.historyDate) {
   state.historyDate = historyDate;
   state.data = payload;
   await loadHistoryIndex();
+  await loadPreviousData(payload);
   renderStaticControls();
   render();
 }
@@ -162,6 +168,33 @@ async function loadHistoryIndex() {
     }
   } catch {
     state.historyIndex = { latest: '', snapshots: [] };
+  }
+}
+
+async function loadPreviousData(currentData) {
+  state.previousData = null;
+  state.comparisonDate = '';
+
+  const currentDate = state.historyDate === 'latest'
+    ? currentData.generatedAt?.slice(0, 10)
+    : state.historyDate;
+  const previousDate = [...(state.historyIndex?.snapshots || [])]
+    .sort()
+    .reverse()
+    .find((snapshot) => snapshot < currentDate);
+
+  if (!previousDate) return;
+
+  try {
+    const response = await fetch(
+      new URL(`data/history/${previousDate}.json`, window.location.href),
+      { cache: 'no-store' }
+    );
+    if (!response.ok) return;
+    state.previousData = await response.json();
+    state.comparisonDate = previousDate;
+  } catch {
+    // The current ranking remains usable when an older snapshot is unavailable.
   }
 }
 
@@ -264,6 +297,20 @@ function escapeHtml(value = '') {
 function getVisibleRows() {
   const query = state.query.trim().toLowerCase();
   let rows = state.data.stats[state.activeType] || [];
+  const previousScores = new Map(
+    (state.previousData?.stats?.[state.activeType] || []).map((row) => [
+      `${row.universeId}:${row.playerId}`,
+      row.score
+    ])
+  );
+
+  rows = rows.map((row) => {
+    const previousScore = previousScores.get(`${row.universeId}:${row.playerId}`);
+    return {
+      ...row,
+      scoreDelta: Number.isFinite(previousScore) ? row.score - previousScore : null
+    };
+  });
 
   if (state.universe !== 'all') {
     rows = rows.filter((row) => row.universeId === state.universe);
@@ -313,6 +360,9 @@ function compareRows(a, b) {
   const left = a[state.sortKey];
   const right = b[state.sortKey];
 
+  if (left === null || left === undefined) return right === null || right === undefined ? 0 : 1;
+  if (right === null || right === undefined) return -1;
+
   if (typeof left === 'number' && typeof right === 'number') {
     return (left - right) * direction;
   }
@@ -332,6 +382,18 @@ function render() {
   elements.metaLine.textContent = `Обновлено ${formatDate(state.data.generatedAt)} · вселенных ${okUniverses}/${state.data.universes.length} · строк ${formatNumber(totalRows)}`;
   setStatus(failedUniverses > 0 ? `Не удалось скачать ${failedUniverses} вселенных. Остальные данные доступны.` : '');
   elements.scoreHeader.textContent = TAB_LABELS[state.activeType] || 'Очки';
+  elements.scoreDeltaHeader.title = state.comparisonDate
+    ? `Изменение относительно ${formatHistoryDate(state.comparisonDate)}`
+    : 'Предыдущий снимок недоступен';
+  const deltaSortActive = state.sortKey === 'scoreDelta';
+  elements.scoreDeltaSortButton.querySelector('.sortIndicator').textContent = deltaSortActive
+    ? (state.sortDirection === 'desc' ? '↓' : '↑')
+    : '';
+  elements.scoreDeltaSortButton.setAttribute('aria-pressed', String(deltaSortActive));
+  elements.scoreDeltaSortButton.setAttribute(
+    'aria-label',
+    `Сортировать по изменению за день${deltaSortActive ? `, сейчас ${state.sortDirection === 'desc' ? 'по убыванию' : 'по возрастанию'}` : ''}`
+  );
   elements.positionHeader.textContent = 'Топ в своей вселенной';
 
   elements.tabs.querySelectorAll('.tab[data-type]').forEach((tab) => {
@@ -349,6 +411,7 @@ function render() {
       <td data-column="displayName" class="${row.isVacation ? 'vacation' : ''}">${escapeHtml(row.displayName)}</td>
       <td data-column="allianceTag">${row.allianceTag ? escapeHtml(row.allianceTag) : '<span class="muted">-</span>'}</td>
       <td data-column="score">${formatNumber(row.score)}</td>
+      <td data-column="scoreDelta" class="scoreDelta ${getScoreDeltaClass(row.scoreDelta)}">${formatScoreDelta(row.scoreDelta)}</td>
       <td data-column="universeName">${escapeHtml(row.universeName)}</td>
       <td data-column="position">${formatNumber(row.position)}</td>
       <td data-column="speed">${formatNumber(row.speed)}x</td>
@@ -358,6 +421,18 @@ function render() {
     </tr>
   `).join('');
   updateColumnVisibility();
+}
+
+function formatScoreDelta(value) {
+  if (!Number.isFinite(value)) return '—';
+  if (value > 0) return `+${formatNumber(value)}`;
+  if (value < 0) return `−${formatNumber(Math.abs(value))}`;
+  return '0';
+}
+
+function getScoreDeltaClass(value) {
+  if (!Number.isFinite(value) || value === 0) return 'neutral';
+  return value > 0 ? 'positive' : 'negative';
 }
 
 elements.columnSettingsButton.addEventListener('click', (event) => {
@@ -447,6 +522,16 @@ elements.columnFilterHeaders.forEach((header) => {
 
 elements.limitFilter.addEventListener('change', (event) => {
   state.limit = event.target.value;
+  render();
+});
+
+elements.scoreDeltaSortButton.addEventListener('click', () => {
+  if (state.sortKey === 'scoreDelta') {
+    state.sortDirection = state.sortDirection === 'desc' ? 'asc' : 'desc';
+  } else {
+    state.sortKey = 'scoreDelta';
+    state.sortDirection = 'desc';
+  }
   render();
 });
 
