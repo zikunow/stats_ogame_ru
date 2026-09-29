@@ -66,7 +66,12 @@
               <th class="rank" data-column="rank">Место</th>
               <th data-column="displayName">Ник</th>
               <th data-column="allianceTag">Альянс</th>
-              <th id="scoreHeader" data-column="score">Очки</th>
+              <th id="scoreHeader" class="sortableHeader" data-column="score">
+                <button id="scoreSortButton" type="button" aria-label="Сортировать по очкам от большего к меньшему">
+                  <span id="scoreHeaderLabel">Очки</span>
+                  <span id="scoreSortIndicator" class="sortIndicator" aria-hidden="true">↓</span>
+                </button>
+              </th>
               <th id="scoreDeltaHeader" class="sortableHeader" data-column="scoreDelta">
                 <button id="scoreDeltaSortButton" type="button" aria-label="Сортировать по изменению за день">
                   <span>За день</span>

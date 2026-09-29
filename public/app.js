@@ -81,6 +81,9 @@ const elements = {
   statusBox: document.querySelector('#statusBox'),
   tableBody: document.querySelector('#tableBody'),
   scoreHeader: document.querySelector('#scoreHeader'),
+  scoreHeaderLabel: document.querySelector('#scoreHeaderLabel'),
+  scoreSortButton: document.querySelector('#scoreSortButton'),
+  scoreSortIndicator: document.querySelector('#scoreSortIndicator'),
   scoreDeltaHeader: document.querySelector('#scoreDeltaHeader'),
   scoreDeltaSortButton: document.querySelector('#scoreDeltaSortButton'),
   positionHeader: document.querySelector('#positionHeader')
@@ -381,7 +384,12 @@ function render() {
 
   elements.metaLine.textContent = `Обновлено ${formatDate(state.data.generatedAt)} · вселенных ${okUniverses}/${state.data.universes.length} · строк ${formatNumber(totalRows)}`;
   setStatus(failedUniverses > 0 ? `Не удалось скачать ${failedUniverses} вселенных. Остальные данные доступны.` : '');
-  elements.scoreHeader.textContent = TAB_LABELS[state.activeType] || 'Очки';
+  const scoreLabel = TAB_LABELS[state.activeType] || 'Очки';
+  const scoreSortActive = state.sortKey === 'score';
+  elements.scoreHeaderLabel.textContent = scoreLabel;
+  elements.scoreSortIndicator.textContent = scoreSortActive ? '↓' : '';
+  elements.scoreSortButton.setAttribute('aria-pressed', String(scoreSortActive));
+  elements.scoreSortButton.setAttribute('aria-label', `Сортировать «${scoreLabel}» от большего к меньшему`);
   elements.scoreDeltaHeader.title = state.comparisonDate
     ? `Изменение относительно ${formatHistoryDate(state.comparisonDate)}`
     : 'Предыдущий снимок недоступен';
@@ -532,6 +540,12 @@ elements.scoreDeltaSortButton.addEventListener('click', () => {
     state.sortKey = 'scoreDelta';
     state.sortDirection = 'desc';
   }
+  render();
+});
+
+elements.scoreSortButton.addEventListener('click', () => {
+  state.sortKey = 'score';
+  state.sortDirection = 'desc';
   render();
 });
 
