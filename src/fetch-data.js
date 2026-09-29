@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import {
+  addScoreBreakdowns,
   addScoreDeltas,
   readHistoryIndex,
   readSnapshotStats,
@@ -365,6 +366,7 @@ export async function buildDashboardData({ universeLimit = 0 } = {}) {
   }
 
   addDerivedStats(stats);
+  addScoreBreakdowns(stats);
 
   return {
     generatedAt: new Date().toISOString(),

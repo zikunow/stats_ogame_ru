@@ -47,13 +47,14 @@ const STAT_GROUPS = [
   { id: '7', label: 'Очки чести' },
   { label: 'Формы жизни', types: ['8', '9', '10', '11'] }
 ];
-const COLUMN_STORAGE_KEY = 'ogame-ru-visible-columns-v2';
+const COLUMN_STORAGE_KEY = 'ogame-ru-visible-columns-v3';
 const TABLE_COLUMNS = [
   { key: 'rank', label: 'Место' },
   { key: 'displayName', label: 'Ник' },
   { key: 'allianceTag', label: 'Альянс' },
   { key: 'score', label: 'Очки' },
   { key: 'scoreDelta', label: 'За день' },
+  { key: 'scoreBreakdown', label: 'Состав очков' },
   { key: 'universeName', label: 'Вселенная' },
   { key: 'position', label: 'Топ вселенной' },
   { key: 'speed', label: 'Eco' },
@@ -381,6 +382,7 @@ function render() {
       <td data-column="allianceTag">${row.allianceTag ? escapeHtml(row.allianceTag) : '<span class="muted">-</span>'}</td>
       <td data-column="score">${formatNumber(row.score)}</td>
       <td data-column="scoreDelta" class="scoreDelta ${getScoreDeltaClass(row.scoreDelta)}">${formatScoreDelta(row.scoreDelta)}</td>
+      <td data-column="scoreBreakdown" class="scoreBreakdownCell">${renderScoreBreakdown(row.scoreBreakdown)}</td>
       <td data-column="universeName">${escapeHtml(row.universeName)}</td>
       <td data-column="position">${formatNumber(row.position)}</td>
       <td data-column="speed">${formatNumber(row.speed)}x</td>
@@ -402,6 +404,78 @@ function formatScoreDelta(value) {
 function getScoreDeltaClass(value) {
   if (!Number.isFinite(value) || value === 0) return 'neutral';
   return value > 0 ? 'positive' : 'negative';
+}
+
+function formatPercent(value) {
+  return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value)}%`;
+}
+
+function formatBreakdownTooltip(title, score, percent, details = []) {
+  return [
+    `${title}: ${formatPercent(percent)} · ${formatNumber(score)}`,
+    ...details.map(({ label, value, detailPercent }) => (
+      `${label}: ${formatPercent(detailPercent)} · ${formatNumber(value)}`
+    ))
+  ].join('\n');
+}
+
+function renderScoreBreakdown(breakdown) {
+  if (!breakdown) return '<span class="muted">—</span>';
+
+  const segments = [
+    {
+      key: 'economy',
+      label: 'Эко',
+      ...breakdown.economy
+    },
+    {
+      key: 'research',
+      label: 'Исследования',
+      ...breakdown.research
+    },
+    {
+      key: 'military',
+      label: 'Военная мощь',
+      ...breakdown.military,
+      details: [
+        { label: 'Флот', value: breakdown.military.fleet, detailPercent: breakdown.military.fleetPercent },
+        { label: 'Оборона', value: breakdown.military.defense, detailPercent: breakdown.military.defensePercent }
+      ]
+    },
+    {
+      key: 'lifeforms',
+      label: 'ФЖ',
+      ...breakdown.lifeforms,
+      details: [
+        { label: 'Постройки ФЖ', value: breakdown.lifeforms.buildings, detailPercent: breakdown.lifeforms.buildingsPercent },
+        { label: 'Технологии ФЖ', value: breakdown.lifeforms.technologies, detailPercent: breakdown.lifeforms.technologiesPercent },
+        { label: 'Артефакты', value: breakdown.lifeforms.artifacts, detailPercent: breakdown.lifeforms.artifactsPercent }
+      ]
+    }
+  ];
+
+  const ariaLabel = segments
+    .map((segment) => `${segment.label} ${formatPercent(segment.percent)}`)
+    .join(', ');
+
+  return `
+    <div class="scoreBreakdown" role="img" aria-label="${escapeHtml(ariaLabel)}">
+      ${segments.map((segment) => `
+        <span
+          class="scoreBreakdownSegment ${segment.key}"
+          style="--segment-share: ${segment.percent}"
+          title="${escapeHtml(formatBreakdownTooltip(
+            segment.label,
+            segment.score,
+            segment.percent,
+            segment.details || []
+          ))}"
+        >
+          ${segment.percent >= 8 ? `<span>${Math.round(segment.percent)}%</span>` : ''}
+        </span>
+      `).join('')}
+    </div>
+  `;
 }
 
 elements.columnSettingsButton.addEventListener('click', (event) => {
@@ -563,7 +637,8 @@ function setColumnSettingsOpen(isOpen) {
 function updateColumnVisibility() {
   const visibleColumns = new Set(state.visibleColumns);
   document.querySelectorAll('[data-column]').forEach((cell) => {
-    cell.hidden = !visibleColumns.has(cell.dataset.column);
+    const pointsOnlyColumn = cell.dataset.column === 'scoreBreakdown';
+    cell.hidden = !visibleColumns.has(cell.dataset.column) || (pointsOnlyColumn && state.activeType !== '0');
   });
 }
 

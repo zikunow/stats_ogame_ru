@@ -6,6 +6,36 @@ import {
   readSnapshotStats
 } from '../src/data-storage.js';
 
+function validateScoreBreakdowns(rows, snapshotDate, requireAll) {
+  for (const row of rows) {
+    const key = `${row.universeId}:${row.playerId}`;
+    const breakdown = row.scoreBreakdown;
+    if (!breakdown) {
+      if (requireAll) throw new Error(`Missing score breakdown for ${snapshotDate}/${key}`);
+      continue;
+    }
+
+    const breakdownTotal = breakdown.economy.score
+      + breakdown.research.score
+      + breakdown.military.score
+      + breakdown.lifeforms.score;
+    if (breakdownTotal !== row.score) {
+      throw new Error(`Invalid score breakdown total for ${snapshotDate}/${key}`);
+    }
+    if (breakdown.military.fleet + breakdown.military.defense !== breakdown.military.score) {
+      throw new Error(`Invalid military breakdown for ${snapshotDate}/${key}`);
+    }
+    if (
+      breakdown.lifeforms.buildings
+        + breakdown.lifeforms.technologies
+        + breakdown.lifeforms.artifacts
+      !== breakdown.lifeforms.score
+    ) {
+      throw new Error(`Invalid lifeform breakdown for ${snapshotDate}/${key}`);
+    }
+  }
+}
+
 const index = await readHistoryIndex();
 if (!index.latest || !index.snapshots?.length) throw new Error('History index is empty');
 
@@ -33,13 +63,15 @@ for (const snapshotDate of [...index.snapshots].sort()) {
     }
   }
 
+  validateScoreBreakdowns(stats['0'], snapshotDate, snapshotDate === index.latest);
+
   previousStats = stats;
 }
 
 const latestMeta = JSON.parse(
   await readFile(resolve(HISTORY_DIR, index.latest, 'meta.json'), 'utf8')
 );
-const requiredTypes = ['0', '1', '2', '3', '8', 'fleet', 'defense', 'ships'];
+const requiredTypes = ['0', '1', '2', '3', '8', '9', '10', '11', 'fleet', 'defense', 'ships'];
 const latestStats = await readSnapshotStats(index.latest, requiredTypes);
 const scores = Object.fromEntries(requiredTypes.map((type) => [
   type,

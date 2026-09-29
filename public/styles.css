@@ -293,7 +293,7 @@ input {
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 1080px;
+  min-width: 1320px;
 }
 
 thead {
@@ -365,6 +365,53 @@ td.scoreDelta.negative {
 
 td.scoreDelta.neutral {
   color: var(--muted);
+}
+
+th[data-column="scoreBreakdown"],
+td.scoreBreakdownCell {
+  min-width: 250px;
+}
+
+.scoreBreakdown {
+  display: flex;
+  width: 220px;
+  height: 22px;
+  margin: 0 auto;
+  overflow: hidden;
+  border: 1px solid rgba(22, 32, 47, 0.16);
+  border-radius: 5px;
+  background: #edf1f6;
+  box-shadow: inset 0 1px 2px rgba(22, 32, 47, 0.08);
+}
+
+.scoreBreakdownSegment {
+  display: flex;
+  flex: var(--segment-share) 1 0;
+  align-items: center;
+  justify-content: center;
+  min-width: 1px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: help;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+}
+
+.scoreBreakdownSegment.economy {
+  background: #2f80ed;
+}
+
+.scoreBreakdownSegment.research {
+  background: #8e5bd9;
+}
+
+.scoreBreakdownSegment.military {
+  background: #d65a4a;
+}
+
+.scoreBreakdownSegment.lifeforms {
+  background: #2b9a66;
 }
 
 th.columnFilterHeader {
