@@ -403,10 +403,10 @@ function matchesPlayerStatus(status = '') {
   const isInactive = status.includes('i') || status.includes('I');
 
   switch (state.playerStatus) {
+    case 'active-only':
+      return !isVacation && !isInactive;
     case 'exclude-vacation':
       return !isVacation;
-    case 'exclude-inactive-vacation':
-      return !(isVacation && isInactive);
     case 'exclude-inactive':
       return !isInactive;
     default:
