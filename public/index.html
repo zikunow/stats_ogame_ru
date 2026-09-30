@@ -48,6 +48,15 @@
             <option value="latest">Актуальные</option>
           </select>
         </label>
+        <label>
+          <span>Статус</span>
+          <select id="playerStatusFilter">
+            <option value="all">Все игроки</option>
+            <option value="exclude-vacation">Все, кроме РО</option>
+            <option value="exclude-inactive-vacation">Все, кроме РО-ишек больше 7 дней</option>
+            <option value="exclude-inactive">Все, кроме ишек 7 дней и больше</option>
+          </select>
+        </label>
         <label class="search">
           <span>Поиск</span>
           <input id="searchInput" type="search" placeholder="Ник или альянс">

@@ -9,6 +9,7 @@ const state = {
     debrisPercent: 'all'
   },
   limit: '100',
+  playerStatus: 'all',
   query: '',
   sortKey: 'score',
   sortDirection: 'desc',
@@ -73,6 +74,7 @@ const elements = {
   columnFilterHeaders: document.querySelectorAll('.columnFilterHeader'),
   limitFilter: document.querySelector('#limitFilter'),
   historyFilter: document.querySelector('#historyFilter'),
+  playerStatusFilter: document.querySelector('#playerStatusFilter'),
   searchInput: document.querySelector('#searchInput'),
   tabs: document.querySelector('#tabs'),
   statusBox: document.querySelector('#statusBox'),
@@ -282,6 +284,8 @@ function getVisibleRows() {
     rows = rows.filter((row) => row.universeId === state.universe);
   }
 
+  rows = rows.filter((row) => matchesPlayerStatus(row.status));
+
   for (const [key, value] of Object.entries(state.columnFilters)) {
     if (value === 'all') continue;
     rows = rows.filter((row) => String(row[key]) === value);
@@ -392,6 +396,22 @@ function render() {
     </tr>
   `).join('');
   updateColumnVisibility();
+}
+
+function matchesPlayerStatus(status = '') {
+  const isVacation = status.includes('v');
+  const isInactive = status.includes('i') || status.includes('I');
+
+  switch (state.playerStatus) {
+    case 'exclude-vacation':
+      return !isVacation;
+    case 'exclude-inactive-vacation':
+      return !(isVacation && isInactive);
+    case 'exclude-inactive':
+      return !isInactive;
+    default:
+      return true;
+  }
 }
 
 function formatScoreDelta(value) {
@@ -595,6 +615,11 @@ elements.historyFilter.addEventListener('change', async (event) => {
   } finally {
     elements.historyFilter.disabled = false;
   }
+});
+
+elements.playerStatusFilter.addEventListener('change', (event) => {
+  state.playerStatus = event.target.value;
+  render();
 });
 
 elements.searchInput.addEventListener('input', (event) => {

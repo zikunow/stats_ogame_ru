@@ -171,10 +171,20 @@ p {
 
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(180px, 260px) minmax(100px, 130px) minmax(150px, 180px) minmax(220px, 1fr);
+  grid-template-columns: minmax(170px, 1.2fr) minmax(90px, 0.6fr) minmax(135px, 0.8fr) minmax(225px, 1.4fr) minmax(220px, 2fr);
   gap: 12px;
   align-items: end;
   margin-bottom: 14px;
+}
+
+@media (max-width: 1050px) {
+  .toolbar {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .toolbar .search {
+    grid-column: span 2;
+  }
 }
 
 label span {
@@ -524,6 +534,10 @@ tbody tr:hover {
 
   .toolbar {
     grid-template-columns: 1fr;
+  }
+
+  .toolbar .search {
+    grid-column: auto;
   }
 
   .tableWrap {
