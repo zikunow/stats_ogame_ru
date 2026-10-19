@@ -49,6 +49,7 @@ const STAT_GROUPS = [
   { label: 'Формы жизни', types: ['8', '9', '10', '11'] }
 ];
 const COLUMN_STORAGE_KEY = 'ogame-ru-visible-columns-v3';
+const THEME_STORAGE_KEY = 'ogame-ru-theme';
 const TABLE_COLUMNS = [
   { key: 'rank', label: 'Место' },
   { key: 'displayName', label: 'Ник' },
@@ -67,6 +68,9 @@ const DEFAULT_VISIBLE_COLUMNS = TABLE_COLUMNS.map((column) => column.key);
 
 const elements = {
   metaLine: document.querySelector('#metaLine'),
+  themeToggle: document.querySelector('#themeToggle'),
+  themeToggleIcon: document.querySelector('#themeToggleIcon'),
+  themeToggleLabel: document.querySelector('#themeToggleLabel'),
   columnSettingsButton: document.querySelector('#columnSettingsButton'),
   columnSettingsPanel: document.querySelector('#columnSettingsPanel'),
   columnSettings: document.querySelector('#columnSettings'),
@@ -89,6 +93,25 @@ const elements = {
 };
 
 state.visibleColumns = loadVisibleColumns();
+updateThemeToggle();
+
+function updateThemeToggle() {
+  const isDark = document.documentElement.dataset.theme === 'dark';
+  elements.themeToggle.setAttribute('aria-pressed', String(isDark));
+  elements.themeToggle.setAttribute('aria-label', isDark ? 'Включить светлую тему' : 'Включить тёмную тему');
+  elements.themeToggle.title = isDark ? 'Включить светлую тему' : 'Включить тёмную тему';
+  elements.themeToggleIcon.textContent = isDark ? '☀' : '☾';
+  elements.themeToggleLabel.textContent = isDark ? 'Светлая' : 'Тёмная';
+}
+
+function toggleTheme() {
+  const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = theme;
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch {}
+  updateThemeToggle();
+}
 
 function formatNumber(value) {
   return new Intl.NumberFormat('ru-RU').format(value);
@@ -587,6 +610,8 @@ elements.limitFilter.addEventListener('change', (event) => {
   state.limit = event.target.value;
   render();
 });
+
+elements.themeToggle.addEventListener('click', toggleTheme);
 
 elements.scoreDeltaSortButton.addEventListener('click', () => {
   if (state.sortKey === 'scoreDelta') {

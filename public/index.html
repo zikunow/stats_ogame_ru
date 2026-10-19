@@ -4,6 +4,19 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>OGame RU Dashboard</title>
+    <script>
+      (() => {
+        const storageKey = 'ogame-ru-theme';
+        let theme = '';
+        try {
+          theme = localStorage.getItem(storageKey) || '';
+        } catch {}
+        if (theme !== 'light' && theme !== 'dark') {
+          theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
@@ -14,6 +27,10 @@
           <p id="metaLine">Загрузка данных...</p>
         </div>
         <div class="topbarActions">
+          <button id="themeToggle" class="themeToggle" type="button" aria-pressed="false">
+            <span id="themeToggleIcon" class="themeToggleIcon" aria-hidden="true">☾</span>
+            <span id="themeToggleLabel">Тёмная</span>
+          </button>
           <div class="settings">
             <button id="columnSettingsButton" class="settingsButton" type="button" aria-expanded="false" aria-controls="columnSettingsPanel">
               <span class="settingsIcon" aria-hidden="true"></span>
