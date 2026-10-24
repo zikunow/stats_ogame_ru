@@ -15,7 +15,8 @@ const state = {
   sortDirection: 'desc',
   historyDate: 'latest',
   historyIndex: null,
-  snapshotDate: ''
+  snapshotDate: '',
+  universeSelectionInitialized: false
 };
 
 const HISTORY_INDEX_URL = new URL('data/history/index.json', window.location.href);
@@ -50,6 +51,7 @@ const STAT_GROUPS = [
 ];
 const COLUMN_STORAGE_KEY = 'ogame-ru-visible-columns-v3';
 const THEME_STORAGE_KEY = 'ogame-ru-theme';
+const UNIVERSE_STORAGE_KEY = 'ogame-ru-universe-v1';
 const TABLE_COLUMNS = [
   { key: 'rank', label: 'Место' },
   { key: 'displayName', label: 'Ник' },
@@ -152,6 +154,66 @@ function saveVisibleColumns() {
   localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(state.visibleColumns));
 }
 
+function normalizeUniverseSlug(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function findUniverse(value) {
+  const rawValue = String(value || '').trim();
+  const normalizedValue = normalizeUniverseSlug(rawValue);
+  if (!normalizedValue || normalizedValue === 'all') return null;
+
+  return state.data.universes.find((universe) => (
+    String(universe.id) === rawValue
+    || String(universe.serverId).toLowerCase() === rawValue.toLowerCase()
+    || normalizeUniverseSlug(universe.name) === normalizedValue
+  )) || null;
+}
+
+function saveUniverseSelection() {
+  try {
+    localStorage.setItem(UNIVERSE_STORAGE_KEY, state.universe);
+  } catch {}
+}
+
+function syncUniverseUrl() {
+  const url = new URL(window.location.href);
+  const universe = findUniverse(state.universe);
+
+  if (universe) {
+    url.searchParams.set('universe', normalizeUniverseSlug(universe.name));
+  } else {
+    url.searchParams.delete('universe');
+  }
+
+  window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+}
+
+function initializeUniverseSelection() {
+  if (state.universeSelectionInitialized) return;
+
+  const url = new URL(window.location.href);
+  const hasUniverseParameter = url.searchParams.has('universe');
+  let requestedUniverse = hasUniverseParameter ? url.searchParams.get('universe') : 'all';
+
+  if (!hasUniverseParameter) {
+    try {
+      requestedUniverse = localStorage.getItem(UNIVERSE_STORAGE_KEY) || 'all';
+    } catch {}
+  }
+
+  state.universe = findUniverse(requestedUniverse)?.id || 'all';
+  state.universeSelectionInitialized = true;
+  saveUniverseSelection();
+  syncUniverseUrl();
+}
+
 async function loadData(historyDate = state.historyDate) {
   await loadHistoryIndex();
   const snapshotDate = historyDate === 'latest' ? state.historyIndex.latest : historyDate;
@@ -166,6 +228,7 @@ async function loadData(historyDate = state.historyDate) {
   state.historyDate = historyDate;
   state.snapshotDate = snapshotDate;
   state.data = { ...payload, stats: {} };
+  initializeUniverseSelection();
   await loadStatData(state.activeType);
   renderStaticControls();
   render();
@@ -694,6 +757,8 @@ function updateColumnVisibility() {
 
 function applyUniverseFilter(universeId) {
   state.universe = universeId;
+  saveUniverseSelection();
+  syncUniverseUrl();
   normalizeColumnFilters();
   render();
 }
