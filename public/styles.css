@@ -19,6 +19,10 @@
   --row-hover: #f6faf9;
   --breakdown-track: #edf1f6;
   --breakdown-border: rgba(22, 32, 47, 0.16);
+  --score-economy: #687178;
+  --score-research: #5f8f2c;
+  --score-military: #ad3b3f;
+  --score-lifeforms: #65559a;
   --warn-bg: #fff7df;
   --warn-line: #e3b84f;
   --warn-text: #6c4d05;
@@ -466,19 +470,19 @@ td.scoreBreakdownCell {
 }
 
 .scoreBreakdownSegment.economy {
-  background: #2f80ed;
+  background: var(--score-economy);
 }
 
 .scoreBreakdownSegment.research {
-  background: #8e5bd9;
+  background: var(--score-research);
 }
 
 .scoreBreakdownSegment.military {
-  background: #d65a4a;
+  background: var(--score-military);
 }
 
 .scoreBreakdownSegment.lifeforms {
-  background: #2b9a66;
+  background: var(--score-lifeforms);
 }
 
 th.columnFilterHeader {
