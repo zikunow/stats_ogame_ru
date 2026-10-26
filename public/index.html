@@ -17,7 +17,7 @@
         document.documentElement.dataset.theme = theme;
       })();
     </script>
-    <link rel="stylesheet" href="styles.css?v=20261024-game-colors">
+    <link rel="stylesheet" href="styles.css?v=20261026-periods">
   </head>
   <body>
     <main class="shell">
@@ -66,6 +66,12 @@
           </select>
         </label>
         <label>
+          <span>Период</span>
+          <select id="deltaPeriodFilter">
+            <option value="1d">1 день</option>
+          </select>
+        </label>
+        <label>
           <span>Статус</span>
           <select id="playerStatusFilter">
             <option value="all">Все игроки</option>
@@ -99,7 +105,7 @@
               </th>
               <th id="scoreDeltaHeader" class="sortableHeader" data-column="scoreDelta">
                 <button id="scoreDeltaSortButton" type="button" aria-label="Сортировать по изменению за день">
-                  <span>За день</span>
+                  <span id="scoreDeltaHeaderLabel">За день</span>
                   <span class="sortIndicator" aria-hidden="true"></span>
                 </button>
               </th>
@@ -137,6 +143,6 @@
       </section>
     </main>
 
-    <script src="app.js?v=20261024-universe-links" type="module"></script>
+    <script src="app.js?v=20261026-periods" type="module"></script>
   </body>
 </html>

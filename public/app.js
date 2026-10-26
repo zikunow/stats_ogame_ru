@@ -14,6 +14,8 @@ const state = {
   sortKey: 'score',
   sortDirection: 'desc',
   historyDate: 'latest',
+  deltaPeriod: '1d',
+  periodComparison: null,
   historyIndex: null,
   snapshotDate: '',
   universeSelectionInitialized: false
@@ -21,6 +23,7 @@ const state = {
 
 const HISTORY_INDEX_URL = new URL('data/history/index.json', window.location.href);
 const statCache = new Map();
+const comparisonCache = new Map();
 const TAB_ORDER = ['0', '1', '2', 'fleet', 'ships', 'defense', '3', '4', '5', '6', '7', '8', '9', '10', '11'];
 const TAB_LABELS = {
   0: 'Очки',
@@ -57,7 +60,7 @@ const TABLE_COLUMNS = [
   { key: 'displayName', label: 'Ник' },
   { key: 'allianceTag', label: 'Альянс' },
   { key: 'score', label: 'Очки' },
-  { key: 'scoreDelta', label: 'За день' },
+  { key: 'scoreDelta', label: 'Изменение' },
   { key: 'scoreBreakdown', label: 'Состав очков' },
   { key: 'universeName', label: 'Вселенная' },
   { key: 'position', label: 'Топ вселенной' },
@@ -80,6 +83,7 @@ const elements = {
   columnFilterHeaders: document.querySelectorAll('.columnFilterHeader'),
   limitFilter: document.querySelector('#limitFilter'),
   historyFilter: document.querySelector('#historyFilter'),
+  deltaPeriodFilter: document.querySelector('#deltaPeriodFilter'),
   playerStatusFilter: document.querySelector('#playerStatusFilter'),
   searchInput: document.querySelector('#searchInput'),
   tabs: document.querySelector('#tabs'),
@@ -91,6 +95,7 @@ const elements = {
   scoreSortIndicator: document.querySelector('#scoreSortIndicator'),
   scoreDeltaHeader: document.querySelector('#scoreDeltaHeader'),
   scoreDeltaSortButton: document.querySelector('#scoreDeltaSortButton'),
+  scoreDeltaHeaderLabel: document.querySelector('#scoreDeltaHeaderLabel'),
   positionHeader: document.querySelector('#positionHeader')
 };
 
@@ -228,8 +233,10 @@ async function loadData(historyDate = state.historyDate) {
   state.historyDate = historyDate;
   state.snapshotDate = snapshotDate;
   state.data = { ...payload, stats: {} };
+  state.periodComparison = null;
   initializeUniverseSelection();
   await loadStatData(state.activeType);
+  await loadPeriodComparison(state.activeType);
   renderStaticControls();
   render();
 }
@@ -266,6 +273,49 @@ async function loadStatData(type) {
   state.data.stats[type] = await request;
 }
 
+async function loadPeriodComparison(type = state.activeType) {
+  const period = getEffectiveDeltaPeriod();
+  const comparisonDate = getPeriodComparisonDate(period);
+
+  if (period === '1d' || !comparisonDate) {
+    state.periodComparison = {
+      snapshotDate: state.snapshotDate,
+      comparisonDate,
+      period,
+      type,
+      scores: null
+    };
+    return;
+  }
+
+  const cacheKey = `${comparisonDate}:${type}`;
+  let request = comparisonCache.get(cacheKey);
+  if (!request) {
+    request = fetch(
+      new URL(`data/history/${comparisonDate}/stats/${type}.json`, window.location.href)
+    ).then(async (response) => {
+      if (!response.ok) throw new Error('Не удалось загрузить данные для сравнения');
+      const rows = await response.json();
+      return new Map(rows.map((row) => [
+        `${row.universeId}:${row.playerId}`,
+        row.score
+      ]));
+    }).catch((error) => {
+      comparisonCache.delete(cacheKey);
+      throw error;
+    });
+    comparisonCache.set(cacheKey, request);
+  }
+
+  state.periodComparison = {
+    snapshotDate: state.snapshotDate,
+    comparisonDate,
+    period,
+    type,
+    scores: await request
+  };
+}
+
 function renderStaticControls() {
   const availableTypes = new Set((state.data.highscoreTypes || []).map((type) => type.id));
   elements.tabs.innerHTML = STAT_GROUPS
@@ -284,6 +334,7 @@ function renderStaticControls() {
 
   elements.universeFilter.innerHTML = universeOptions;
   renderHistoryFilter();
+  renderDeltaPeriodFilter();
   renderColumnSettings();
   renderColumnFilterMenus();
 }
@@ -319,12 +370,94 @@ function renderStatControl(group, availableTypes) {
 function renderHistoryFilter() {
   const snapshots = state.historyIndex?.snapshots || [];
   elements.historyFilter.innerHTML = [
-    '<option value="latest">Актуальные</option>',
-    ...snapshots.map((snapshot) => (
+    `<option value="latest">${formatHistoryDate(state.historyIndex.latest)} (актуальные)</option>`,
+    ...snapshots.filter((snapshot) => snapshot !== state.historyIndex.latest).map((snapshot) => (
       `<option value="${snapshot}">${formatHistoryDate(snapshot)}</option>`
     ))
   ].join('');
   elements.historyFilter.value = state.historyDate;
+}
+
+function parseSnapshotDate(value) {
+  return new Date(`${value}T00:00:00Z`);
+}
+
+function subtractDays(value, days) {
+  const date = parseSnapshotDate(value);
+  date.setUTCDate(date.getUTCDate() - days);
+  return date.toISOString().slice(0, 10);
+}
+
+function findSnapshotAtOrBefore(targetDate, snapshotDate = state.snapshotDate) {
+  return (state.historyIndex?.snapshots || [])
+    .filter((date) => date < snapshotDate && date <= targetDate)
+    .sort()
+    .at(-1) || '';
+}
+
+function getLongPeriod() {
+  const thirtyDayDate = findSnapshotAtOrBefore(subtractDays(state.snapshotDate, 30));
+  if (thirtyDayDate) return { value: '30d', label: '30 дней', days: 30 };
+
+  const fourteenDayDate = findSnapshotAtOrBefore(subtractDays(state.snapshotDate, 14));
+  return fourteenDayDate ? { value: '14d', label: '14 дней', days: 14 } : null;
+}
+
+function getDeltaPeriodOptions() {
+  const options = [{ value: '1d', label: '1 день' }];
+  if (findSnapshotAtOrBefore(subtractDays(state.snapshotDate, 7))) {
+    options.push({ value: '7d', label: '7 дней', days: 7 });
+  }
+  const longPeriod = getLongPeriod();
+  if (longPeriod) options.push(longPeriod);
+  if ((state.historyIndex?.snapshots || []).some((date) => date < state.snapshotDate)) {
+    options.push({ value: 'all', label: 'Всё время' });
+  }
+  return options;
+}
+
+function getEffectiveDeltaPeriod() {
+  return state.historyDate === 'latest' ? state.deltaPeriod : '1d';
+}
+
+function getPeriodComparisonDate(period = getEffectiveDeltaPeriod()) {
+  if (period === '1d') return state.data.comparisonDate || '';
+  if (period === 'all') {
+    return [...(state.historyIndex?.snapshots || [])]
+      .filter((date) => date < state.snapshotDate)
+      .sort()[0] || '';
+  }
+
+  const days = Number.parseInt(period, 10);
+  return findSnapshotAtOrBefore(subtractDays(state.snapshotDate, days));
+}
+
+function getDeltaPeriodLabel(period = getEffectiveDeltaPeriod()) {
+  if (period === '7d') return 'За 7 дней';
+  if (period === '14d') return 'За 14 дней';
+  if (period === '30d') return 'За 30 дней';
+  if (period === 'all') return 'За всё время';
+  return 'За день';
+}
+
+function renderDeltaPeriodFilter() {
+  const isArchive = state.historyDate !== 'latest';
+  const options = isArchive
+    ? [{ value: '1d', label: '1 день' }]
+    : getDeltaPeriodOptions();
+
+  if (!options.some((option) => option.value === state.deltaPeriod)) {
+    state.deltaPeriod = '1d';
+  }
+
+  elements.deltaPeriodFilter.innerHTML = options
+    .map((option) => `<option value="${option.value}">${option.label}</option>`)
+    .join('');
+  elements.deltaPeriodFilter.value = isArchive ? '1d' : state.deltaPeriod;
+  elements.deltaPeriodFilter.disabled = isArchive;
+  elements.deltaPeriodFilter.title = isArchive
+    ? 'Для архивной даты показывается изменение относительно предыдущего снимка'
+    : '';
 }
 
 function formatHistoryDate(value) {
@@ -365,6 +498,32 @@ function escapeHtml(value = '') {
 function getVisibleRows() {
   const query = state.query.trim().toLowerCase();
   let rows = state.data.stats[state.activeType] || [];
+
+  const period = getEffectiveDeltaPeriod();
+  const comparison = state.periodComparison;
+  if (
+    period !== '1d'
+    && comparison?.snapshotDate === state.snapshotDate
+    && comparison?.period === period
+    && comparison?.type === state.activeType
+    && comparison.scores
+  ) {
+    rows = rows.map((row) => {
+      const previousScore = comparison.scores.get(`${row.universeId}:${row.playerId}`);
+      const isNew = !Number.isFinite(previousScore);
+      return {
+        ...row,
+        scoreDelta: isNew ? null : row.score - previousScore,
+        scoreDeltaIsNew: isNew
+      };
+    });
+  } else {
+    const hasComparison = Boolean(state.data.comparisonDate);
+    rows = rows.map((row) => ({
+      ...row,
+      scoreDeltaIsNew: hasComparison && !Number.isFinite(row.scoreDelta)
+    }));
+  }
 
   if (state.universe !== 'all') {
     rows = rows.filter((row) => row.universeId === state.universe);
@@ -443,8 +602,11 @@ function render() {
   elements.scoreSortIndicator.textContent = scoreSortActive ? '↓' : '';
   elements.scoreSortButton.setAttribute('aria-pressed', String(scoreSortActive));
   elements.scoreSortButton.setAttribute('aria-label', `Сортировать «${scoreLabel}» от большего к меньшему`);
-  elements.scoreDeltaHeader.title = state.data.comparisonDate
-    ? `Изменение относительно ${formatHistoryDate(state.data.comparisonDate)}`
+  const comparisonDate = state.periodComparison?.comparisonDate || state.data.comparisonDate;
+  const deltaPeriodLabel = getDeltaPeriodLabel();
+  elements.scoreDeltaHeaderLabel.textContent = deltaPeriodLabel;
+  elements.scoreDeltaHeader.title = comparisonDate
+    ? `Изменение относительно ${formatHistoryDate(comparisonDate)}`
     : 'Предыдущий снимок недоступен';
   const deltaSortActive = state.sortKey === 'scoreDelta';
   elements.scoreDeltaSortButton.querySelector('.sortIndicator').textContent = deltaSortActive
@@ -453,7 +615,7 @@ function render() {
   elements.scoreDeltaSortButton.setAttribute('aria-pressed', String(deltaSortActive));
   elements.scoreDeltaSortButton.setAttribute(
     'aria-label',
-    `Сортировать по изменению за день${deltaSortActive ? `, сейчас ${state.sortDirection === 'desc' ? 'по убыванию' : 'по возрастанию'}` : ''}`
+    `Сортировать: ${deltaPeriodLabel.toLowerCase()}${deltaSortActive ? `, сейчас ${state.sortDirection === 'desc' ? 'по убыванию' : 'по возрастанию'}` : ''}`
   );
   elements.positionHeader.textContent = 'Топ в своей вселенной';
 
@@ -471,7 +633,7 @@ function render() {
       <td data-column="displayName" class="${row.isVacation ? 'vacation' : ''}">${escapeHtml(row.displayName)}</td>
       <td data-column="allianceTag">${row.allianceTag ? escapeHtml(row.allianceTag) : '<span class="muted">-</span>'}</td>
       <td data-column="score">${formatNumber(row.score)}</td>
-      <td data-column="scoreDelta" class="scoreDelta ${getScoreDeltaClass(row.scoreDelta)}">${formatScoreDelta(row.scoreDelta)}</td>
+      <td data-column="scoreDelta" class="scoreDelta ${getScoreDeltaClass(row.scoreDelta, row.scoreDeltaIsNew)}">${formatScoreDelta(row.scoreDelta, row.scoreDeltaIsNew)}</td>
       <td data-column="scoreBreakdown" class="scoreBreakdownCell">${renderScoreBreakdown(row.scoreBreakdown)}</td>
       <td data-column="universeName">${escapeHtml(row.universeName)}</td>
       <td data-column="position">${formatNumber(row.position)}</td>
@@ -500,14 +662,16 @@ function matchesPlayerStatus(status = '') {
   }
 }
 
-function formatScoreDelta(value) {
+function formatScoreDelta(value, isNew = false) {
+  if (isNew) return 'Новый';
   if (!Number.isFinite(value)) return '—';
   if (value > 0) return `+${formatNumber(value)}`;
   if (value < 0) return `−${formatNumber(Math.abs(value))}`;
   return '0';
 }
 
-function getScoreDeltaClass(value) {
+function getScoreDeltaClass(value, isNew = false) {
+  if (isNew) return 'new';
   if (!Number.isFinite(value) || value === 0) return 'neutral';
   return value > 0 ? 'positive' : 'negative';
 }
@@ -705,6 +869,27 @@ elements.historyFilter.addEventListener('change', async (event) => {
   }
 });
 
+elements.deltaPeriodFilter.addEventListener('change', async (event) => {
+  const previousPeriod = state.deltaPeriod;
+  state.deltaPeriod = event.target.value;
+  elements.deltaPeriodFilter.disabled = true;
+  setStatus(`Загружаю сравнение «${getDeltaPeriodLabel().toLowerCase()}»...`);
+
+  try {
+    await loadPeriodComparison();
+    render();
+    setStatus('');
+  } catch (error) {
+    state.deltaPeriod = previousPeriod;
+    await loadPeriodComparison();
+    renderDeltaPeriodFilter();
+    render();
+    setStatus(error.message, 'error');
+  } finally {
+    elements.deltaPeriodFilter.disabled = state.historyDate !== 'latest';
+  }
+});
+
 elements.playerStatusFilter.addEventListener('change', (event) => {
   state.playerStatus = event.target.value;
   render();
@@ -772,15 +957,18 @@ function applyColumnFilter(key, value) {
 async function applyStatType(type) {
   if (!type || type === state.activeType) return;
   const previousType = state.activeType;
+  const previousComparison = state.periodComparison;
   state.activeType = type;
   renderStaticControls();
   setStatus(`Загружаю рейтинг «${TAB_LABELS[type] || type}»...`);
 
   try {
     await loadStatData(type);
+    await loadPeriodComparison(type);
     render();
   } catch (error) {
     state.activeType = previousType;
+    state.periodComparison = previousComparison;
     renderStaticControls();
     render();
     setStatus(error.message, 'error');

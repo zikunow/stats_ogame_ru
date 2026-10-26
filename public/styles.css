@@ -232,7 +232,7 @@ p {
 
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(170px, 1.2fr) minmax(90px, 0.6fr) minmax(135px, 0.8fr) minmax(225px, 1.4fr) minmax(220px, 2fr);
+  grid-template-columns: minmax(165px, 1.15fr) minmax(80px, 0.5fr) minmax(145px, 0.85fr) minmax(120px, 0.7fr) minmax(215px, 1.35fr) minmax(210px, 1.8fr);
   gap: 12px;
   align-items: end;
   margin-bottom: 14px;
@@ -436,6 +436,11 @@ td.scoreDelta.negative {
 
 td.scoreDelta.neutral {
   color: var(--muted);
+}
+
+td.scoreDelta.new {
+  color: var(--accent-strong);
+  font-weight: 700;
 }
 
 th[data-column="scoreBreakdown"],
