@@ -7,7 +7,8 @@ on:
     paths-ignore:
       - "data/**"
   schedule:
-    - cron: "0 2 * * *"
+    - cron: "30 1 * * *"
+    - cron: "30 2 * * *"
   workflow_dispatch:
     inputs:
       refresh_data:
@@ -25,7 +26,35 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  schedule_gate:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+
+    steps:
+      - name: Select 03:30 Europe/Berlin schedule
+        id: check
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+          TZ: Europe/Berlin
+        run: |
+          should_run=true
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            should_run=false
+            offset=$(date +%z)
+            if [ "$SCHEDULE" = "30 1 * * *" ] && [ "$offset" = "+0200" ]; then
+              should_run=true
+            fi
+            if [ "$SCHEDULE" = "30 2 * * *" ] && [ "$offset" = "+0100" ]; then
+              should_run=true
+            fi
+          fi
+          echo "should_run=$should_run" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: schedule_gate
+    if: needs.schedule_gate.outputs.should_run == 'true'
     runs-on: ubuntu-latest
 
     steps:

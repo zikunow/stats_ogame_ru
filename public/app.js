@@ -413,6 +413,35 @@ function subtractDays(value, days) {
   return date.toISOString().slice(0, 10);
 }
 
+function getWeekStart(value) {
+  const date = parseSnapshotDate(value);
+  const daysSinceMonday = (date.getUTCDay() + 6) % 7;
+  date.setUTCDate(date.getUTCDate() - daysSinceMonday);
+  return date.toISOString().slice(0, 10);
+}
+
+function findSnapshotAtOrAfter(targetDate, maximumDate) {
+  return [...(state.historyIndex?.snapshots || [])]
+    .filter((date) => date >= targetDate && date <= maximumDate)
+    .sort()[0] || '';
+}
+
+function getPreviousWeekRange(snapshotDate = state.historyIndex?.latest) {
+  if (!snapshotDate) return null;
+  const currentWeekStart = getWeekStart(snapshotDate);
+  const previousWeekStart = subtractDays(currentWeekStart, 7);
+  const previousWeekEnd = subtractDays(currentWeekStart, 1);
+  const from = findSnapshotAtOrAfter(previousWeekStart, previousWeekEnd);
+  const to = findSnapshotAtOrAfter(currentWeekStart, snapshotDate);
+  if (!from || !to || from >= to) return null;
+  return {
+    from,
+    to,
+    kind: 'previous-week',
+    label: formatCalendarRange(previousWeekStart, previousWeekEnd)
+  };
+}
+
 function findSnapshotAtOrBefore(targetDate, snapshotDate = state.snapshotDate) {
   return (state.historyIndex?.snapshots || [])
     .filter((date) => date < snapshotDate && date <= targetDate)
@@ -436,6 +465,14 @@ function getDeltaPeriodOptions(snapshotDate = state.snapshotDate) {
       value: '7d',
       label: getFixedPeriodOptionLabel('7 дней', sevenDayDate),
       days: 7
+    });
+  }
+  const previousWeek = getPreviousWeekRange(snapshotDate);
+  if (previousWeek) {
+    options.push({
+      value: 'previous-week',
+      label: `Прошлая неделя (${previousWeek.label})`,
+      range: previousWeek
     });
   }
   const longPeriod = getLongPeriod(snapshotDate);
@@ -495,7 +532,9 @@ function getPeriodComparisonDate(period = getEffectiveDeltaPeriod()) {
 }
 
 function getDeltaPeriodLabel(period = getEffectiveDeltaPeriod()) {
-  if (period === 'custom') return 'За период';
+  if (period === 'custom') {
+    return state.customRange?.kind === 'previous-week' ? 'За прошлую неделю' : 'За период';
+  }
   if (state.universe !== 'all' && ['7d', '14d', '30d'].includes(period)) {
     const comparisonDate = getPeriodComparisonDate(period);
     const firstSnapshot = getUniverseFirstSnapshot(state.universe);
@@ -514,15 +553,18 @@ function getDeltaComparisonTitle() {
 
   if (comparison.period === 'custom') {
     const endDate = state.customRange?.to || state.snapshotDate;
+    const titlePrefix = state.customRange?.kind === 'previous-week'
+      ? 'Изменение за прошлую неделю'
+      : 'Изменение';
     if (state.universe !== 'all') {
       const startDate = comparison.comparisonDates?.[state.universe] || comparison.comparisonDate;
-      return `Изменение с ${formatHistoryDate(startDate)} по ${formatHistoryDate(endDate)}`;
+      return `${titlePrefix}: с ${formatHistoryDate(startDate)} по ${formatHistoryDate(endDate)}`;
     }
     const dates = Object.values(comparison.comparisonDates || {});
     const suffix = dates.some((date) => date > comparison.comparisonDate)
       ? '; новые вселенные — с их первого снимка'
       : '';
-    return `Изменение с ${formatHistoryDate(comparison.comparisonDate)} по ${formatHistoryDate(endDate)}${suffix}`;
+    return `${titlePrefix}: с ${formatHistoryDate(comparison.comparisonDate)} по ${formatHistoryDate(endDate)}${suffix}`;
   }
 
   if (state.universe !== 'all' && comparison.period !== '1d') {
@@ -557,8 +599,13 @@ function renderTimeframeFilter() {
     state.deltaPeriod = '1d';
   }
 
+  const customRangeLabel = state.customRange?.kind === 'previous-week'
+    ? `Прошлая неделя (${state.customRange.label})`
+    : state.customRange
+      ? `${formatShortHistoryDate(state.customRange.from)}–${formatShortHistoryDate(state.customRange.to)}`
+      : '';
   const customOption = state.customRange
-    ? [`<option value="custom:${state.customRange.from}:${state.customRange.to}">${formatShortHistoryDate(state.customRange.from)}–${formatShortHistoryDate(state.customRange.to)}</option>`]
+    ? [`<option value="custom:${state.customRange.from}:${state.customRange.to}">${escapeHtml(customRangeLabel)}</option>`]
     : [];
   const archiveOption = state.historyDate === 'latest' || state.customRange
     ? []
@@ -609,6 +656,24 @@ function formatShortHistoryDate(value) {
     month: '2-digit',
     year: '2-digit'
   }).format(new Date(`${value}T00:00:00`));
+}
+
+function formatCalendarRange(from, to) {
+  const fromDate = parseSnapshotDate(from);
+  const toDate = parseSnapshotDate(to);
+  const dayFormatter = new Intl.DateTimeFormat('ru-RU', {
+    day: 'numeric',
+    timeZone: 'UTC'
+  });
+  const dayMonthFormatter = new Intl.DateTimeFormat('ru-RU', {
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'UTC'
+  });
+  if (fromDate.getUTCMonth() === toDate.getUTCMonth()) {
+    return `${dayFormatter.format(fromDate)}–${dayMonthFormatter.format(toDate)}`;
+  }
+  return `${dayMonthFormatter.format(fromDate)}–${dayMonthFormatter.format(toDate)}`;
 }
 
 function renderColumnSettings() {
@@ -1000,6 +1065,26 @@ elements.scoreSortButton.addEventListener('click', () => {
   render();
 });
 
+async function applyCustomRange(range, loadingMessage) {
+  const previousCustomRange = state.customRange;
+  state.customRange = range;
+  elements.rangePickerPanel.hidden = true;
+  elements.timeframeFilter.disabled = true;
+  setStatus(loadingMessage);
+
+  try {
+    await loadData(range.to === state.historyIndex.latest ? 'latest' : range.to);
+    setStatus('');
+  } catch (error) {
+    state.customRange = previousCustomRange;
+    renderTimeframeFilter();
+    render();
+    setStatus(error.message, 'error');
+  } finally {
+    elements.timeframeFilter.disabled = false;
+  }
+}
+
 elements.timeframeFilter.addEventListener('change', async (event) => {
   const choice = event.target.value;
   if (choice === 'choose-date') {
@@ -1017,6 +1102,16 @@ elements.timeframeFilter.addEventListener('change', async (event) => {
     elements.archiveDatePicker.hidden = true;
     elements.rangePickerPanel.hidden = false;
     elements.rangeStartDate.focus();
+    return;
+  }
+  if (choice === 'latest:previous-week') {
+    const range = getPreviousWeekRange();
+    if (!range) {
+      renderTimeframeFilter();
+      setStatus('Недостаточно снимков для прошлой недели', 'error');
+      return;
+    }
+    await applyCustomRange(range, 'Загружаю прошлую неделю...');
     return;
   }
   if (!choice.startsWith('latest:')) return;
@@ -1086,23 +1181,7 @@ elements.rangeApplyButton.addEventListener('click', async () => {
     return;
   }
 
-  const previousCustomRange = state.customRange;
-  state.customRange = { from, to };
-  elements.rangePickerPanel.hidden = true;
-  elements.timeframeFilter.disabled = true;
-  setStatus('Загружаю произвольный период...');
-
-  try {
-    await loadData(to === state.historyIndex.latest ? 'latest' : to);
-    setStatus('');
-  } catch (error) {
-    state.customRange = previousCustomRange;
-    renderTimeframeFilter();
-    render();
-    setStatus(error.message, 'error');
-  } finally {
-    elements.timeframeFilter.disabled = false;
-  }
+  await applyCustomRange({ from, to, kind: 'custom' }, 'Загружаю произвольный период...');
 });
 
 elements.rangeCancelButton.addEventListener('click', () => {
