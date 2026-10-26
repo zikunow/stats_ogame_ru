@@ -17,7 +17,7 @@
         document.documentElement.dataset.theme = theme;
       })();
     </script>
-    <link rel="stylesheet" href="styles.css?v=20261026-periods">
+    <link rel="stylesheet" href="styles.css?v=20261026-timeframe">
   </head>
   <body>
     <main class="shell">
@@ -59,17 +59,12 @@
             <option value="all">Все</option>
           </select>
         </label>
-        <label>
+        <label class="timeframeControl">
           <span>Дата</span>
-          <select id="historyFilter">
-            <option value="latest">Актуальные</option>
+          <select id="timeframeFilter">
+            <option value="latest:1d">Актуальные</option>
           </select>
-        </label>
-        <label>
-          <span>Период</span>
-          <select id="deltaPeriodFilter">
-            <option value="1d">1 день</option>
-          </select>
+          <input id="archiveDatePicker" class="archiveDatePicker" type="date" aria-label="Выбрать точную дату" hidden>
         </label>
         <label>
           <span>Статус</span>
@@ -143,6 +138,6 @@
       </section>
     </main>
 
-    <script src="app.js?v=20261026-periods" type="module"></script>
+    <script src="app.js?v=20261026-timeframe" type="module"></script>
   </body>
 </html>

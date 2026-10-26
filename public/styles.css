@@ -232,7 +232,7 @@ p {
 
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(165px, 1.15fr) minmax(80px, 0.5fr) minmax(145px, 0.85fr) minmax(120px, 0.7fr) minmax(215px, 1.35fr) minmax(210px, 1.8fr);
+  grid-template-columns: minmax(170px, 1.15fr) minmax(90px, 0.55fr) minmax(275px, 1.55fr) minmax(225px, 1.35fr) minmax(220px, 1.8fr);
   gap: 12px;
   align-items: end;
   margin-bottom: 14px;
@@ -264,6 +264,24 @@ input {
   background: var(--panel);
   color: var(--text);
   padding: 0 12px;
+}
+
+.timeframeControl {
+  position: relative;
+}
+
+.archiveDatePicker {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  width: 100%;
+  background: var(--panel);
+  box-shadow: 0 12px 28px var(--menu-shadow);
+}
+
+.archiveDatePicker[hidden] {
+  display: none;
 }
 
 .tabs {

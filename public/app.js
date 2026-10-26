@@ -82,8 +82,8 @@ const elements = {
   universeFilter: document.querySelector('#universeFilter'),
   columnFilterHeaders: document.querySelectorAll('.columnFilterHeader'),
   limitFilter: document.querySelector('#limitFilter'),
-  historyFilter: document.querySelector('#historyFilter'),
-  deltaPeriodFilter: document.querySelector('#deltaPeriodFilter'),
+  timeframeFilter: document.querySelector('#timeframeFilter'),
+  archiveDatePicker: document.querySelector('#archiveDatePicker'),
   playerStatusFilter: document.querySelector('#playerStatusFilter'),
   searchInput: document.querySelector('#searchInput'),
   tabs: document.querySelector('#tabs'),
@@ -288,6 +288,47 @@ async function loadPeriodComparison(type = state.activeType) {
     return;
   }
 
+  if (period === 'all') {
+    const firstSnapshots = state.historyIndex?.universeFirstSnapshots || {};
+    const universeDates = Object.fromEntries(state.data.universes.map((universe) => [
+      universe.id,
+      firstSnapshots[universe.id] || getUniverseFirstSnapshot(universe.id)
+    ]));
+    const comparisonDates = [...new Set(Object.values(universeDates).filter(Boolean))];
+    const scoreMaps = new Map(await Promise.all(comparisonDates.map(async (date) => [
+      date,
+      await loadComparisonScores(date, type)
+    ])));
+    const scores = new Map();
+
+    for (const [date, scoreMap] of scoreMaps) {
+      for (const [key, score] of scoreMap) {
+        const universeId = key.slice(0, key.indexOf(':'));
+        if (universeDates[universeId] === date) scores.set(key, score);
+      }
+    }
+
+    state.periodComparison = {
+      snapshotDate: state.snapshotDate,
+      comparisonDate,
+      comparisonDates: universeDates,
+      period,
+      type,
+      scores
+    };
+    return;
+  }
+
+  state.periodComparison = {
+    snapshotDate: state.snapshotDate,
+    comparisonDate,
+    period,
+    type,
+    scores: await loadComparisonScores(comparisonDate, type)
+  };
+}
+
+async function loadComparisonScores(comparisonDate, type) {
   const cacheKey = `${comparisonDate}:${type}`;
   let request = comparisonCache.get(cacheKey);
   if (!request) {
@@ -306,14 +347,7 @@ async function loadPeriodComparison(type = state.activeType) {
     });
     comparisonCache.set(cacheKey, request);
   }
-
-  state.periodComparison = {
-    snapshotDate: state.snapshotDate,
-    comparisonDate,
-    period,
-    type,
-    scores: await request
-  };
+  return request;
 }
 
 function renderStaticControls() {
@@ -333,8 +367,7 @@ function renderStaticControls() {
   ].join('');
 
   elements.universeFilter.innerHTML = universeOptions;
-  renderHistoryFilter();
-  renderDeltaPeriodFilter();
+  renderTimeframeFilter();
   renderColumnSettings();
   renderColumnFilterMenus();
 }
@@ -367,17 +400,6 @@ function renderStatControl(group, availableTypes) {
   `;
 }
 
-function renderHistoryFilter() {
-  const snapshots = state.historyIndex?.snapshots || [];
-  elements.historyFilter.innerHTML = [
-    `<option value="latest">${formatHistoryDate(state.historyIndex.latest)} (актуальные)</option>`,
-    ...snapshots.filter((snapshot) => snapshot !== state.historyIndex.latest).map((snapshot) => (
-      `<option value="${snapshot}">${formatHistoryDate(snapshot)}</option>`
-    ))
-  ].join('');
-  elements.historyFilter.value = state.historyDate;
-}
-
 function parseSnapshotDate(value) {
   return new Date(`${value}T00:00:00Z`);
 }
@@ -395,25 +417,42 @@ function findSnapshotAtOrBefore(targetDate, snapshotDate = state.snapshotDate) {
     .at(-1) || '';
 }
 
-function getLongPeriod() {
-  const thirtyDayDate = findSnapshotAtOrBefore(subtractDays(state.snapshotDate, 30));
+function getLongPeriod(snapshotDate = state.snapshotDate) {
+  const thirtyDayDate = findSnapshotAtOrBefore(subtractDays(snapshotDate, 30), snapshotDate);
   if (thirtyDayDate) return { value: '30d', label: '30 дней', days: 30 };
 
-  const fourteenDayDate = findSnapshotAtOrBefore(subtractDays(state.snapshotDate, 14));
+  const fourteenDayDate = findSnapshotAtOrBefore(subtractDays(snapshotDate, 14), snapshotDate);
   return fourteenDayDate ? { value: '14d', label: '14 дней', days: 14 } : null;
 }
 
-function getDeltaPeriodOptions() {
+function getDeltaPeriodOptions(snapshotDate = state.snapshotDate) {
   const options = [{ value: '1d', label: '1 день' }];
-  if (findSnapshotAtOrBefore(subtractDays(state.snapshotDate, 7))) {
+  if (findSnapshotAtOrBefore(subtractDays(snapshotDate, 7), snapshotDate)) {
     options.push({ value: '7d', label: '7 дней', days: 7 });
   }
-  const longPeriod = getLongPeriod();
+  const longPeriod = getLongPeriod(snapshotDate);
   if (longPeriod) options.push(longPeriod);
-  if ((state.historyIndex?.snapshots || []).some((date) => date < state.snapshotDate)) {
-    options.push({ value: 'all', label: 'Всё время' });
+  if ((state.historyIndex?.snapshots || []).some((date) => date < snapshotDate)) {
+    options.push({ value: 'all', label: getAllTimeOptionLabel() });
   }
   return options;
+}
+
+function getUniverseFirstSnapshot(universeId) {
+  const firstSnapshots = state.historyIndex?.universeFirstSnapshots || {};
+  if (universeId && universeId !== 'all' && firstSnapshots[universeId]) {
+    return firstSnapshots[universeId];
+  }
+
+  return [...(state.historyIndex?.snapshots || [])].sort()[0] || '';
+}
+
+function getAllTimeOptionLabel() {
+  if (state.universe === 'all') return 'Всё время (с начала каждой вселенной)';
+  const firstSnapshot = getUniverseFirstSnapshot(state.universe);
+  return firstSnapshot
+    ? `Всё время (с ${formatHistoryDate(firstSnapshot)})`
+    : 'Всё время';
 }
 
 function getEffectiveDeltaPeriod() {
@@ -422,11 +461,7 @@ function getEffectiveDeltaPeriod() {
 
 function getPeriodComparisonDate(period = getEffectiveDeltaPeriod()) {
   if (period === '1d') return state.data.comparisonDate || '';
-  if (period === 'all') {
-    return [...(state.historyIndex?.snapshots || [])]
-      .filter((date) => date < state.snapshotDate)
-      .sort()[0] || '';
-  }
+  if (period === 'all') return getUniverseFirstSnapshot(state.universe);
 
   const days = Number.parseInt(period, 10);
   return findSnapshotAtOrBefore(subtractDays(state.snapshotDate, days));
@@ -440,24 +475,53 @@ function getDeltaPeriodLabel(period = getEffectiveDeltaPeriod()) {
   return 'За день';
 }
 
-function renderDeltaPeriodFilter() {
-  const isArchive = state.historyDate !== 'latest';
-  const options = isArchive
-    ? [{ value: '1d', label: '1 день' }]
-    : getDeltaPeriodOptions();
+function getDeltaComparisonTitle() {
+  const comparison = state.periodComparison;
+  if (!comparison?.comparisonDate) return 'Предыдущий снимок недоступен';
 
-  if (!options.some((option) => option.value === state.deltaPeriod)) {
+  if (comparison.period === 'all') {
+    if (state.universe !== 'all') {
+      const date = comparison.comparisonDates?.[state.universe] || comparison.comparisonDate;
+      return `Изменение с первого снимка вселенной: ${formatHistoryDate(date)}`;
+    }
+
+    const dates = [...new Set(Object.values(comparison.comparisonDates || {}).filter(Boolean))].sort();
+    const range = dates.length > 1
+      ? ` (${formatHistoryDate(dates[0])}–${formatHistoryDate(dates.at(-1))})`
+      : dates[0] ? ` (${formatHistoryDate(dates[0])})` : '';
+    return `Для каждой вселенной изменение считается с её первого снимка${range}`;
+  }
+
+  return `Изменение относительно ${formatHistoryDate(comparison.comparisonDate)}`;
+}
+
+function renderTimeframeFilter() {
+  const latestDate = state.historyIndex.latest;
+  const periodOptions = getDeltaPeriodOptions(latestDate);
+  if (!periodOptions.some((option) => option.value === state.deltaPeriod)) {
     state.deltaPeriod = '1d';
   }
 
-  elements.deltaPeriodFilter.innerHTML = options
-    .map((option) => `<option value="${option.value}">${option.label}</option>`)
-    .join('');
-  elements.deltaPeriodFilter.value = isArchive ? '1d' : state.deltaPeriod;
-  elements.deltaPeriodFilter.disabled = isArchive;
-  elements.deltaPeriodFilter.title = isArchive
-    ? 'Для архивной даты показывается изменение относительно предыдущего снимка'
-    : '';
+  const archiveOption = state.historyDate === 'latest'
+    ? []
+    : [`<option value="archive:${state.snapshotDate}">${formatHistoryDate(state.snapshotDate)} (архив)</option>`];
+  elements.timeframeFilter.innerHTML = [
+    ...archiveOption,
+    `<option value="latest:1d">${formatHistoryDate(latestDate)} (актуальная)</option>`,
+    ...periodOptions.filter((option) => option.value !== '1d').map((option) => (
+      `<option value="latest:${option.value}">${escapeHtml(option.label)}</option>`
+    )),
+    '<option disabled>──────────</option>',
+    '<option value="choose-date">Выбрать точную дату…</option>'
+  ].join('');
+  elements.timeframeFilter.value = state.historyDate === 'latest'
+    ? `latest:${state.deltaPeriod}`
+    : `archive:${state.snapshotDate}`;
+
+  const snapshots = [...(state.historyIndex?.snapshots || [])].sort();
+  elements.archiveDatePicker.min = snapshots[0] || '';
+  elements.archiveDatePicker.max = latestDate || '';
+  elements.archiveDatePicker.value = state.snapshotDate || latestDate || '';
 }
 
 function formatHistoryDate(value) {
@@ -602,12 +666,9 @@ function render() {
   elements.scoreSortIndicator.textContent = scoreSortActive ? '↓' : '';
   elements.scoreSortButton.setAttribute('aria-pressed', String(scoreSortActive));
   elements.scoreSortButton.setAttribute('aria-label', `Сортировать «${scoreLabel}» от большего к меньшему`);
-  const comparisonDate = state.periodComparison?.comparisonDate || state.data.comparisonDate;
   const deltaPeriodLabel = getDeltaPeriodLabel();
   elements.scoreDeltaHeaderLabel.textContent = deltaPeriodLabel;
-  elements.scoreDeltaHeader.title = comparisonDate
-    ? `Изменение относительно ${formatHistoryDate(comparisonDate)}`
-    : 'Предыдущий снимок недоступен';
+  elements.scoreDeltaHeader.title = getDeltaComparisonTitle();
   const deltaSortActive = state.sortKey === 'scoreDelta';
   elements.scoreDeltaSortButton.querySelector('.sortIndicator').textContent = deltaSortActive
     ? (state.sortDirection === 'desc' ? '↓' : '↑')
@@ -856,38 +917,70 @@ elements.scoreSortButton.addEventListener('click', () => {
   render();
 });
 
-elements.historyFilter.addEventListener('change', async (event) => {
-  elements.historyFilter.disabled = true;
-  setStatus('Загружаю снимок данных...');
-  try {
-    await loadData(event.target.value);
-    setStatus('');
-  } catch (error) {
-    setStatus(error.message, 'error');
-  } finally {
-    elements.historyFilter.disabled = false;
+elements.timeframeFilter.addEventListener('change', async (event) => {
+  const choice = event.target.value;
+  if (choice === 'choose-date') {
+    renderTimeframeFilter();
+    elements.archiveDatePicker.hidden = false;
+    elements.archiveDatePicker.focus();
+    try {
+      elements.archiveDatePicker.showPicker();
+    } catch {}
+    return;
   }
-});
+  if (!choice.startsWith('latest:')) return;
 
-elements.deltaPeriodFilter.addEventListener('change', async (event) => {
   const previousPeriod = state.deltaPeriod;
-  state.deltaPeriod = event.target.value;
-  elements.deltaPeriodFilter.disabled = true;
+  state.deltaPeriod = choice.slice('latest:'.length);
+  elements.timeframeFilter.disabled = true;
   setStatus(`Загружаю сравнение «${getDeltaPeriodLabel().toLowerCase()}»...`);
 
   try {
-    await loadPeriodComparison();
+    if (state.historyDate === 'latest') {
+      await loadPeriodComparison();
+    } else {
+      await loadData('latest');
+    }
+    renderTimeframeFilter();
     render();
     setStatus('');
   } catch (error) {
     state.deltaPeriod = previousPeriod;
-    await loadPeriodComparison();
-    renderDeltaPeriodFilter();
+    if (state.historyDate === 'latest') await loadPeriodComparison();
+    renderTimeframeFilter();
     render();
     setStatus(error.message, 'error');
   } finally {
-    elements.deltaPeriodFilter.disabled = state.historyDate !== 'latest';
+    elements.timeframeFilter.disabled = false;
   }
+});
+
+elements.archiveDatePicker.addEventListener('change', async (event) => {
+  const snapshotDate = event.target.value;
+  const snapshots = state.historyIndex?.snapshots || [];
+  if (!snapshots.includes(snapshotDate)) {
+    setStatus('Для выбранной даты нет сохранённого снимка', 'error');
+    return;
+  }
+
+  elements.archiveDatePicker.hidden = true;
+  elements.timeframeFilter.disabled = true;
+  state.deltaPeriod = '1d';
+  setStatus('Загружаю снимок данных...');
+  try {
+    await loadData(snapshotDate === state.historyIndex.latest ? 'latest' : snapshotDate);
+    setStatus('');
+  } catch (error) {
+    setStatus(error.message, 'error');
+  } finally {
+    elements.timeframeFilter.disabled = false;
+  }
+});
+
+elements.archiveDatePicker.addEventListener('blur', () => {
+  setTimeout(() => {
+    elements.archiveDatePicker.hidden = true;
+  }, 150);
 });
 
 elements.playerStatusFilter.addEventListener('change', (event) => {
@@ -945,6 +1038,7 @@ function applyUniverseFilter(universeId) {
   saveUniverseSelection();
   syncUniverseUrl();
   normalizeColumnFilters();
+  renderTimeframeFilter();
   render();
 }
 

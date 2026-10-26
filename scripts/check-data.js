@@ -40,12 +40,18 @@ const index = await readHistoryIndex();
 if (!index.latest || !index.snapshots?.length) throw new Error('History index is empty');
 
 let previousStats = {};
+const observedUniverseFirstSnapshots = {};
 
 for (const snapshotDate of [...index.snapshots].sort()) {
   const directory = resolve(HISTORY_DIR, snapshotDate);
   const meta = JSON.parse(await readFile(resolve(directory, 'meta.json'), 'utf8'));
   const types = meta.highscoreTypes?.map((type) => type.id) || [];
   if (!meta.generatedAt || types.length === 0) throw new Error(`Invalid metadata for ${snapshotDate}`);
+  for (const universe of meta.universes || []) {
+    if (universe.status !== 'failed' && !observedUniverseFirstSnapshots[universe.id]) {
+      observedUniverseFirstSnapshots[universe.id] = snapshotDate;
+    }
+  }
 
   const stats = await readSnapshotStats(snapshotDate, types);
   for (const type of types) {
@@ -66,6 +72,12 @@ for (const snapshotDate of [...index.snapshots].sort()) {
   validateScoreBreakdowns(stats['0'], snapshotDate, snapshotDate === index.latest);
 
   previousStats = stats;
+}
+
+for (const [universeId, snapshotDate] of Object.entries(observedUniverseFirstSnapshots)) {
+  if (index.universeFirstSnapshots?.[universeId] !== snapshotDate) {
+    throw new Error(`Invalid first snapshot for universe ${universeId}`);
+  }
 }
 
 const latestMeta = JSON.parse(

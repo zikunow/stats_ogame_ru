@@ -387,6 +387,12 @@ export async function refreshData(options = {}) {
   const historyIndex = await readHistoryIndex();
   const snapshots = [...new Set([snapshotDate, ...(historyIndex.snapshots || [])])].sort().reverse();
   const comparisonDate = snapshots.find((date) => date < snapshotDate) || '';
+  const universeFirstSnapshots = { ...(historyIndex.universeFirstSnapshots || {}) };
+  for (const universe of data.universes) {
+    if (universe.status === 'ok' && !universeFirstSnapshots[universe.id]) {
+      universeFirstSnapshots[universe.id] = snapshotDate;
+    }
+  }
   const previousStats = comparisonDate
     ? await readSnapshotStats(comparisonDate, Object.keys(data.stats))
     : {};
@@ -395,7 +401,8 @@ export async function refreshData(options = {}) {
   const snapshotDirectory = await writeSnapshot(data, snapshotDate, comparisonDate);
   await writeHistoryIndex({
     latest: snapshotDate,
-    snapshots
+    snapshots,
+    universeFirstSnapshots
   });
 
   data.snapshotDirectory = snapshotDirectory;
