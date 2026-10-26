@@ -51,7 +51,11 @@ const STAT_GROUPS = [
   { id: 'defense', label: 'Оборона' },
   { label: 'Боевая мощь', types: ['3', '5', '6', '4'] },
   { id: '7', label: 'Очки чести' },
-  { label: 'Формы жизни', types: ['8', '9', '10', '11'] }
+  {
+    label: 'Формы жизни',
+    types: ['8', '9', '10', '11'],
+    optionLabels: { 8: 'Все очки' }
+  }
 ];
 const COLUMN_STORAGE_KEY = 'ogame-ru-visible-columns-v3';
 const THEME_STORAGE_KEY = 'ogame-ru-theme';
@@ -379,7 +383,8 @@ function renderStatControl(group, availableTypes) {
   const types = group.types.filter((type) => availableTypes.has(type));
   if (types.length === 0) return '';
   const isActive = types.includes(state.activeType);
-  const activeLabel = isActive ? `${group.label} / ${TAB_LABELS[state.activeType]}` : group.label;
+  const activeOptionLabel = group.optionLabels?.[state.activeType] || TAB_LABELS[state.activeType];
+  const activeLabel = isActive ? `${group.label} / ${activeOptionLabel}` : group.label;
 
   return `
     <div class="statGroup">
@@ -390,7 +395,7 @@ function renderStatControl(group, availableTypes) {
       <div class="statMenu" hidden>
         ${types.map((type) => `
           <button class="statOption${type === state.activeType ? ' selected' : ''}" type="button" data-type="${type}">
-            ${escapeHtml(TAB_LABELS[type])}
+            ${escapeHtml(group.optionLabels?.[type] || TAB_LABELS[type])}
           </button>
         `).join('')}
       </div>
