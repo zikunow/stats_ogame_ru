@@ -462,11 +462,11 @@ function getUniverseFirstSnapshot(universeId) {
 }
 
 function getAllTimeOptionLabel() {
-  if (state.universe === 'all') return 'Всё время (с начала каждой вселенной)';
+  if (state.universe === 'all') return 'Весь доступный период';
   const firstSnapshot = getUniverseFirstSnapshot(state.universe);
   return firstSnapshot
-    ? `Всё время (с ${formatHistoryDate(firstSnapshot)})`
-    : 'Всё время';
+    ? `Весь период (с ${formatShortHistoryDate(firstSnapshot)})`
+    : 'Весь доступный период';
 }
 
 function getEffectiveDeltaPeriod() {
@@ -490,7 +490,7 @@ function getDeltaPeriodLabel(period = getEffectiveDeltaPeriod()) {
   if (period === '7d') return 'За 7 дней';
   if (period === '14d') return 'За 14 дней';
   if (period === '30d') return 'За 30 дней';
-  if (period === 'all') return 'За всё время';
+  if (period === 'all') return 'За весь период';
   return 'За день';
 }
 
@@ -557,6 +557,14 @@ function formatHistoryDate(value) {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric'
+  }).format(new Date(`${value}T00:00:00`));
+}
+
+function formatShortHistoryDate(value) {
+  return new Intl.DateTimeFormat('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit'
   }).format(new Date(`${value}T00:00:00`));
 }
 
