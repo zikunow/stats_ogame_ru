@@ -17,7 +17,7 @@
         document.documentElement.dataset.theme = theme;
       })();
     </script>
-    <link rel="stylesheet" href="styles.css?v=20261026-timeframe">
+    <link rel="stylesheet" href="styles.css?v=20261026-custom-range">
   </head>
   <body>
     <main class="shell">
@@ -59,13 +59,29 @@
             <option value="all">Все</option>
           </select>
         </label>
-        <label class="timeframeControl">
-          <span>Дата</span>
+        <div class="timeframeControl">
+          <label for="timeframeFilter"><span>Период</span></label>
           <select id="timeframeFilter">
             <option value="latest:1d">Актуальные</option>
           </select>
           <input id="archiveDatePicker" class="archiveDatePicker" type="date" aria-label="Выбрать точную дату" hidden>
-        </label>
+          <div id="rangePickerPanel" class="rangePickerPanel" hidden>
+            <div class="rangePickerFields">
+              <label>
+                <span>С</span>
+                <input id="rangeStartDate" type="date">
+              </label>
+              <label>
+                <span>По</span>
+                <input id="rangeEndDate" type="date">
+              </label>
+            </div>
+            <div class="rangePickerActions">
+              <button id="rangeCancelButton" type="button">Отмена</button>
+              <button id="rangeApplyButton" class="primary" type="button">Показать</button>
+            </div>
+          </div>
+        </div>
         <label>
           <span>Статус</span>
           <select id="playerStatusFilter">
@@ -138,6 +154,6 @@
       </section>
     </main>
 
-    <script src="app.js?v=20261026-period-labels" type="module"></script>
+    <script src="app.js?v=20261026-custom-range" type="module"></script>
   </body>
 </html>

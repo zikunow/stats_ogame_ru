@@ -15,6 +15,7 @@ const state = {
   sortDirection: 'desc',
   historyDate: 'latest',
   deltaPeriod: '1d',
+  customRange: null,
   periodComparison: null,
   historyIndex: null,
   snapshotDate: '',
@@ -84,6 +85,11 @@ const elements = {
   limitFilter: document.querySelector('#limitFilter'),
   timeframeFilter: document.querySelector('#timeframeFilter'),
   archiveDatePicker: document.querySelector('#archiveDatePicker'),
+  rangePickerPanel: document.querySelector('#rangePickerPanel'),
+  rangeStartDate: document.querySelector('#rangeStartDate'),
+  rangeEndDate: document.querySelector('#rangeEndDate'),
+  rangeCancelButton: document.querySelector('#rangeCancelButton'),
+  rangeApplyButton: document.querySelector('#rangeApplyButton'),
   playerStatusFilter: document.querySelector('#playerStatusFilter'),
   searchInput: document.querySelector('#searchInput'),
   tabs: document.querySelector('#tabs'),
@@ -470,11 +476,13 @@ function getAllTimeOptionLabel() {
 }
 
 function getEffectiveDeltaPeriod() {
+  if (state.customRange) return 'custom';
   return state.historyDate === 'latest' ? state.deltaPeriod : '1d';
 }
 
 function getPeriodComparisonDate(period = getEffectiveDeltaPeriod()) {
   if (period === '1d') return state.data.comparisonDate || '';
+  if (period === 'custom') return state.customRange?.from || '';
   if (period === 'all') return getUniverseFirstSnapshot(state.universe);
 
   const days = Number.parseInt(period, 10);
@@ -482,6 +490,7 @@ function getPeriodComparisonDate(period = getEffectiveDeltaPeriod()) {
 }
 
 function getDeltaPeriodLabel(period = getEffectiveDeltaPeriod()) {
+  if (period === 'custom') return 'За период';
   if (state.universe !== 'all' && ['7d', '14d', '30d'].includes(period)) {
     const comparisonDate = getPeriodComparisonDate(period);
     const firstSnapshot = getUniverseFirstSnapshot(state.universe);
@@ -497,6 +506,19 @@ function getDeltaPeriodLabel(period = getEffectiveDeltaPeriod()) {
 function getDeltaComparisonTitle() {
   const comparison = state.periodComparison;
   if (!comparison?.comparisonDate) return 'Предыдущий снимок недоступен';
+
+  if (comparison.period === 'custom') {
+    const endDate = state.customRange?.to || state.snapshotDate;
+    if (state.universe !== 'all') {
+      const startDate = comparison.comparisonDates?.[state.universe] || comparison.comparisonDate;
+      return `Изменение с ${formatHistoryDate(startDate)} по ${formatHistoryDate(endDate)}`;
+    }
+    const dates = Object.values(comparison.comparisonDates || {});
+    const suffix = dates.some((date) => date > comparison.comparisonDate)
+      ? '; новые вселенные — с их первого снимка'
+      : '';
+    return `Изменение с ${formatHistoryDate(comparison.comparisonDate)} по ${formatHistoryDate(endDate)}${suffix}`;
+  }
 
   if (state.universe !== 'all' && comparison.period !== '1d') {
     const date = comparison.comparisonDates?.[state.universe] || comparison.comparisonDate;
@@ -530,26 +552,42 @@ function renderTimeframeFilter() {
     state.deltaPeriod = '1d';
   }
 
-  const archiveOption = state.historyDate === 'latest'
+  const customOption = state.customRange
+    ? [`<option value="custom:${state.customRange.from}:${state.customRange.to}">${formatShortHistoryDate(state.customRange.from)}–${formatShortHistoryDate(state.customRange.to)}</option>`]
+    : [];
+  const archiveOption = state.historyDate === 'latest' || state.customRange
     ? []
     : [`<option value="archive:${state.snapshotDate}">${formatHistoryDate(state.snapshotDate)} (архив)</option>`];
   elements.timeframeFilter.innerHTML = [
+    ...customOption,
     ...archiveOption,
     `<option value="latest:1d">${formatHistoryDate(latestDate)} (актуальная)</option>`,
     ...periodOptions.filter((option) => option.value !== '1d').map((option) => (
       `<option value="latest:${option.value}">${escapeHtml(option.label)}</option>`
     )),
     '<option disabled>──────────</option>',
-    '<option value="choose-date">Выбрать точную дату…</option>'
+    '<option value="choose-date">Выбрать точную дату…</option>',
+    '<option value="choose-range">Произвольный период…</option>'
   ].join('');
-  elements.timeframeFilter.value = state.historyDate === 'latest'
-    ? `latest:${state.deltaPeriod}`
-    : `archive:${state.snapshotDate}`;
+  elements.timeframeFilter.value = state.customRange
+    ? `custom:${state.customRange.from}:${state.customRange.to}`
+    : state.historyDate === 'latest'
+      ? `latest:${state.deltaPeriod}`
+      : `archive:${state.snapshotDate}`;
 
   const snapshots = [...(state.historyIndex?.snapshots || [])].sort();
   elements.archiveDatePicker.min = snapshots[0] || '';
   elements.archiveDatePicker.max = latestDate || '';
   elements.archiveDatePicker.value = state.snapshotDate || latestDate || '';
+  elements.rangeStartDate.min = snapshots[0] || '';
+  elements.rangeStartDate.max = latestDate || '';
+  elements.rangeEndDate.min = snapshots[0] || '';
+  elements.rangeEndDate.max = latestDate || '';
+  elements.rangeStartDate.value = state.customRange?.from
+    || findSnapshotAtOrBefore(subtractDays(latestDate, 7), latestDate)
+    || snapshots[0]
+    || '';
+  elements.rangeEndDate.value = state.customRange?.to || latestDate || '';
 }
 
 function formatHistoryDate(value) {
@@ -886,6 +924,10 @@ elements.universeFilter.addEventListener('change', (event) => {
 });
 
 document.addEventListener('click', (event) => {
+  if (!event.target.closest('.timeframeControl')) {
+    elements.rangePickerPanel.hidden = true;
+  }
+
   const filterButton = event.target.closest('.columnFilterButton');
   if (filterButton) {
     event.stopPropagation();
@@ -957,6 +999,7 @@ elements.timeframeFilter.addEventListener('change', async (event) => {
   const choice = event.target.value;
   if (choice === 'choose-date') {
     renderTimeframeFilter();
+    elements.rangePickerPanel.hidden = true;
     elements.archiveDatePicker.hidden = false;
     elements.archiveDatePicker.focus();
     try {
@@ -964,9 +1007,18 @@ elements.timeframeFilter.addEventListener('change', async (event) => {
     } catch {}
     return;
   }
+  if (choice === 'choose-range') {
+    renderTimeframeFilter();
+    elements.archiveDatePicker.hidden = true;
+    elements.rangePickerPanel.hidden = false;
+    elements.rangeStartDate.focus();
+    return;
+  }
   if (!choice.startsWith('latest:')) return;
 
   const previousPeriod = state.deltaPeriod;
+  const previousCustomRange = state.customRange;
+  state.customRange = null;
   state.deltaPeriod = choice.slice('latest:'.length);
   elements.timeframeFilter.disabled = true;
   setStatus(`Загружаю сравнение «${getDeltaPeriodLabel().toLowerCase()}»...`);
@@ -982,6 +1034,7 @@ elements.timeframeFilter.addEventListener('change', async (event) => {
     setStatus('');
   } catch (error) {
     state.deltaPeriod = previousPeriod;
+    state.customRange = previousCustomRange;
     if (state.historyDate === 'latest') await loadPeriodComparison();
     renderTimeframeFilter();
     render();
@@ -1001,6 +1054,7 @@ elements.archiveDatePicker.addEventListener('change', async (event) => {
 
   elements.archiveDatePicker.hidden = true;
   elements.timeframeFilter.disabled = true;
+  state.customRange = null;
   state.deltaPeriod = '1d';
   setStatus('Загружаю снимок данных...');
   try {
@@ -1011,6 +1065,44 @@ elements.archiveDatePicker.addEventListener('change', async (event) => {
   } finally {
     elements.timeframeFilter.disabled = false;
   }
+});
+
+elements.rangeApplyButton.addEventListener('click', async () => {
+  const from = elements.rangeStartDate.value;
+  const to = elements.rangeEndDate.value;
+  const snapshots = state.historyIndex?.snapshots || [];
+
+  if (!snapshots.includes(from) || !snapshots.includes(to)) {
+    setStatus('Для одной из выбранных дат нет сохранённого снимка', 'error');
+    return;
+  }
+  if (from >= to) {
+    setStatus('Начальная дата должна быть раньше конечной', 'error');
+    return;
+  }
+
+  const previousCustomRange = state.customRange;
+  state.customRange = { from, to };
+  elements.rangePickerPanel.hidden = true;
+  elements.timeframeFilter.disabled = true;
+  setStatus('Загружаю произвольный период...');
+
+  try {
+    await loadData(to === state.historyIndex.latest ? 'latest' : to);
+    setStatus('');
+  } catch (error) {
+    state.customRange = previousCustomRange;
+    renderTimeframeFilter();
+    render();
+    setStatus(error.message, 'error');
+  } finally {
+    elements.timeframeFilter.disabled = false;
+  }
+});
+
+elements.rangeCancelButton.addEventListener('click', () => {
+  elements.rangePickerPanel.hidden = true;
+  renderTimeframeFilter();
 });
 
 elements.archiveDatePicker.addEventListener('blur', () => {
@@ -1031,6 +1123,8 @@ elements.searchInput.addEventListener('input', (event) => {
 
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
+    elements.archiveDatePicker.hidden = true;
+    elements.rangePickerPanel.hidden = true;
     setColumnSettingsOpen(false);
     closeColumnMenus();
     closeStatMenus();
