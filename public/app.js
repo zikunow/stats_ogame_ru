@@ -288,43 +288,35 @@ async function loadPeriodComparison(type = state.activeType) {
     return;
   }
 
-  if (period === 'all') {
-    const firstSnapshots = state.historyIndex?.universeFirstSnapshots || {};
-    const universeDates = Object.fromEntries(state.data.universes.map((universe) => [
-      universe.id,
-      firstSnapshots[universe.id] || getUniverseFirstSnapshot(universe.id)
-    ]));
-    const comparisonDates = [...new Set(Object.values(universeDates).filter(Boolean))];
-    const scoreMaps = new Map(await Promise.all(comparisonDates.map(async (date) => [
-      date,
-      await loadComparisonScores(date, type)
-    ])));
-    const scores = new Map();
+  const firstSnapshots = state.historyIndex?.universeFirstSnapshots || {};
+  const universeDates = Object.fromEntries(state.data.universes.map((universe) => {
+    const firstSnapshot = firstSnapshots[universe.id] || getUniverseFirstSnapshot(universe.id);
+    const actualComparisonDate = period === 'all' || firstSnapshot > comparisonDate
+      ? firstSnapshot
+      : comparisonDate;
+    return [universe.id, actualComparisonDate];
+  }));
+  const comparisonDates = [...new Set(Object.values(universeDates).filter(Boolean))];
+  const scoreMaps = new Map(await Promise.all(comparisonDates.map(async (date) => [
+    date,
+    await loadComparisonScores(date, type)
+  ])));
+  const scores = new Map();
 
-    for (const [date, scoreMap] of scoreMaps) {
-      for (const [key, score] of scoreMap) {
-        const universeId = key.slice(0, key.indexOf(':'));
-        if (universeDates[universeId] === date) scores.set(key, score);
-      }
+  for (const [date, scoreMap] of scoreMaps) {
+    for (const [key, score] of scoreMap) {
+      const universeId = key.slice(0, key.indexOf(':'));
+      if (universeDates[universeId] === date) scores.set(key, score);
     }
-
-    state.periodComparison = {
-      snapshotDate: state.snapshotDate,
-      comparisonDate,
-      comparisonDates: universeDates,
-      period,
-      type,
-      scores
-    };
-    return;
   }
 
   state.periodComparison = {
     snapshotDate: state.snapshotDate,
     comparisonDate,
+    comparisonDates: universeDates,
     period,
     type,
-    scores: await loadComparisonScores(comparisonDate, type)
+    scores
   };
 }
 
@@ -427,15 +419,37 @@ function getLongPeriod(snapshotDate = state.snapshotDate) {
 
 function getDeltaPeriodOptions(snapshotDate = state.snapshotDate) {
   const options = [{ value: '1d', label: '1 день' }];
-  if (findSnapshotAtOrBefore(subtractDays(snapshotDate, 7), snapshotDate)) {
-    options.push({ value: '7d', label: '7 дней', days: 7 });
+  const sevenDayDate = findSnapshotAtOrBefore(subtractDays(snapshotDate, 7), snapshotDate);
+  if (sevenDayDate) {
+    options.push({
+      value: '7d',
+      label: getFixedPeriodOptionLabel('7 дней', sevenDayDate),
+      days: 7
+    });
   }
   const longPeriod = getLongPeriod(snapshotDate);
-  if (longPeriod) options.push(longPeriod);
+  if (longPeriod) {
+    const comparisonDate = findSnapshotAtOrBefore(
+      subtractDays(snapshotDate, longPeriod.days),
+      snapshotDate
+    );
+    options.push({
+      ...longPeriod,
+      label: getFixedPeriodOptionLabel(longPeriod.label, comparisonDate)
+    });
+  }
   if ((state.historyIndex?.snapshots || []).some((date) => date < snapshotDate)) {
     options.push({ value: 'all', label: getAllTimeOptionLabel() });
   }
   return options;
+}
+
+function getFixedPeriodOptionLabel(label, comparisonDate) {
+  if (state.universe === 'all') return label;
+  const firstSnapshot = getUniverseFirstSnapshot(state.universe);
+  return firstSnapshot > comparisonDate
+    ? `${label} (с ${formatHistoryDate(firstSnapshot)})`
+    : label;
 }
 
 function getUniverseFirstSnapshot(universeId) {
@@ -468,6 +482,11 @@ function getPeriodComparisonDate(period = getEffectiveDeltaPeriod()) {
 }
 
 function getDeltaPeriodLabel(period = getEffectiveDeltaPeriod()) {
+  if (state.universe !== 'all' && ['7d', '14d', '30d'].includes(period)) {
+    const comparisonDate = getPeriodComparisonDate(period);
+    const firstSnapshot = getUniverseFirstSnapshot(state.universe);
+    if (firstSnapshot > comparisonDate) return `С ${formatHistoryDate(firstSnapshot)}`;
+  }
   if (period === '7d') return 'За 7 дней';
   if (period === '14d') return 'За 14 дней';
   if (period === '30d') return 'За 30 дней';
@@ -479,17 +498,26 @@ function getDeltaComparisonTitle() {
   const comparison = state.periodComparison;
   if (!comparison?.comparisonDate) return 'Предыдущий снимок недоступен';
 
-  if (comparison.period === 'all') {
-    if (state.universe !== 'all') {
-      const date = comparison.comparisonDates?.[state.universe] || comparison.comparisonDate;
+  if (state.universe !== 'all' && comparison.period !== '1d') {
+    const date = comparison.comparisonDates?.[state.universe] || comparison.comparisonDate;
+    if (comparison.period === 'all' || date > comparison.comparisonDate) {
       return `Изменение с первого снимка вселенной: ${formatHistoryDate(date)}`;
     }
+  }
 
+  if (comparison.period === 'all') {
     const dates = [...new Set(Object.values(comparison.comparisonDates || {}).filter(Boolean))].sort();
     const range = dates.length > 1
       ? ` (${formatHistoryDate(dates[0])}–${formatHistoryDate(dates.at(-1))})`
       : dates[0] ? ` (${formatHistoryDate(dates[0])})` : '';
     return `Для каждой вселенной изменение считается с её первого снимка${range}`;
+  }
+
+  if (comparison.period !== '1d') {
+    const dates = [...new Set(Object.values(comparison.comparisonDates || {}).filter(Boolean))].sort();
+    if (dates.some((date) => date > comparison.comparisonDate)) {
+      return `Изменение относительно ${formatHistoryDate(comparison.comparisonDate)}; новые вселенные — с их первого снимка`;
+    }
   }
 
   return `Изменение относительно ${formatHistoryDate(comparison.comparisonDate)}`;
