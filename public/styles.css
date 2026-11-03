@@ -100,6 +100,64 @@ select {
   gap: 10px;
 }
 
+.siteNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -4px 0 18px;
+}
+
+.siteNav a {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 0 12px;
+  text-decoration: none;
+}
+
+.siteNav a:hover,
+.siteNav a:focus-visible,
+.siteNav a[aria-current="page"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.reportToolbar {
+  display: flex;
+  align-items: end;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.reportToolbar label {
+  width: min(320px, 100%);
+}
+
+.reportLimitHint {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+}
+
+.reportTableWrap {
+  max-height: calc(100vh - 245px);
+}
+
+.reportTable {
+  min-width: 1100px;
+}
+
+.reportScore {
+  color: var(--accent-strong);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 h1 {
   margin: 0 0 5px;
   font-size: clamp(24px, 3vw, 38px);
@@ -670,6 +728,14 @@ tbody tr:hover {
 
   .toolbar .search {
     grid-column: auto;
+  }
+
+  .reportToolbar {
+    display: block;
+  }
+
+  .reportLimitHint {
+    margin-top: 8px;
   }
 
   .tableWrap {

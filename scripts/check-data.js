@@ -5,6 +5,7 @@ import {
   readHistoryIndex,
   readSnapshotStats
 } from '../src/data-storage.js';
+import { REPORTS_DIR } from '../src/reports.js';
 
 function validateScoreBreakdowns(rows, snapshotDate, requireAll) {
   for (const row of rows) {
@@ -107,7 +108,24 @@ for (const militaryRow of latestStats['3']) {
   }
 }
 
+const reportsIndex = JSON.parse(await readFile(resolve(REPORTS_DIR, 'index.json'), 'utf8'));
+for (const reportType of ['monthlyAttackers', 'dailyLosses']) {
+  const descriptor = reportsIndex[reportType];
+  if (!descriptor?.latest || !descriptor.path) throw new Error(`Missing ${reportType} report`);
+  const report = JSON.parse(await readFile(resolve(REPORTS_DIR, descriptor.path), 'utf8'));
+  if (!Array.isArray(report.rows) || !Array.isArray(report.universes)) {
+    throw new Error(`Invalid ${reportType} report`);
+  }
+  if (!report.startDate || !report.endDate || report.startDate >= report.endDate) {
+    throw new Error(`Invalid ${reportType} period`);
+  }
+  if (report.rows.some((row) => !Number.isFinite(row.periodScore) || row.periodScore <= 0)) {
+    throw new Error(`Invalid ${reportType} score`);
+  }
+}
+
 console.log(`Snapshots: ${index.snapshots.length}`);
 console.log(`Latest: ${index.latest}`);
 console.log(`Universes: ${latestMeta.universes.length}`);
+console.log(`Reports: ${reportsIndex.monthlyAttackers.latest}, ${reportsIndex.dailyLosses.latest}`);
 console.log('Data checks passed');

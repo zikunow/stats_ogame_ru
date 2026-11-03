@@ -7,6 +7,7 @@ import {
   writeHistoryIndex,
   writeSnapshot
 } from './data-storage.js';
+import { generateReports } from './reports.js';
 
 const UNIVERSES_URL = 'https://s1-ru.ogame.gameforge.com/api/universes.xml';
 const HIGHSCORE_TYPES = [
@@ -400,6 +401,11 @@ export async function refreshData(options = {}) {
   addScoreDeltas(data.stats, previousStats);
   const snapshotDirectory = await writeSnapshot(data, snapshotDate, comparisonDate);
   await writeHistoryIndex({
+    latest: snapshotDate,
+    snapshots,
+    universeFirstSnapshots
+  });
+  await generateReports({
     latest: snapshotDate,
     snapshots,
     universeFirstSnapshots
