@@ -138,6 +138,43 @@ select {
   width: min(320px, 100%);
 }
 
+.lossPeriodControl > span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.segmentedControl {
+  display: inline-flex;
+  min-height: 40px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.segmentedControl button {
+  min-width: 86px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  padding: 0 12px;
+}
+
+.segmentedControl button:last-child {
+  border-right: 0;
+}
+
+.segmentedControl button:hover,
+.segmentedControl button:focus-visible,
+.segmentedControl button.active {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
 .reportLimitHint {
   min-height: 40px;
   display: flex;

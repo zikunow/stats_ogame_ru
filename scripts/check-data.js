@@ -112,29 +112,37 @@ const reportsIndex = JSON.parse(await readFile(resolve(REPORTS_DIR, 'index.json'
 for (const reportType of ['monthlyAttackers', 'dailyLosses']) {
   const descriptor = reportsIndex[reportType];
   if (!descriptor?.latest || !descriptor.path) throw new Error(`Missing ${reportType} report`);
-  const report = JSON.parse(await readFile(resolve(REPORTS_DIR, descriptor.path), 'utf8'));
-  if (!Array.isArray(report.rows) || !Array.isArray(report.universes)) {
-    throw new Error(`Invalid ${reportType} report`);
+  const reportDescriptors = reportType === 'dailyLosses'
+    ? Object.values(descriptor.periods || {})
+    : [descriptor];
+  if (reportType === 'dailyLosses' && !['1d', '7d', '30d'].every((period) => descriptor.periods?.[period])) {
+    throw new Error('Missing daily losses period');
   }
-  if (!report.startDate || !report.endDate || report.startDate >= report.endDate) {
-    throw new Error(`Invalid ${reportType} period`);
-  }
-  if (report.rows.some((row) => !Number.isFinite(row.periodScore) || row.periodScore <= 0)) {
-    throw new Error(`Invalid ${reportType} score`);
-  }
-  if (
-    reportType === 'monthlyAttackers'
-    && report.rows.some((row) => (
-      !Number.isFinite(row.periodLostScore) || row.periodLostScore > row.periodScore
-    ))
-  ) {
-    throw new Error('Monthly attackers filter was not applied');
-  }
-  if (
-    reportType === 'dailyLosses'
-    && report.rows.some((row) => !Number.isFinite(row.periodDestroyedScore))
-  ) {
-    throw new Error('Missing Military Destroyed value in daily losses');
+  for (const reportDescriptor of reportDescriptors) {
+    const report = JSON.parse(await readFile(resolve(REPORTS_DIR, reportDescriptor.path), 'utf8'));
+    if (!Array.isArray(report.rows) || !Array.isArray(report.universes)) {
+      throw new Error(`Invalid ${reportType} report`);
+    }
+    if (!report.startDate || !report.endDate || report.startDate >= report.endDate) {
+      throw new Error(`Invalid ${reportType} period`);
+    }
+    if (report.rows.some((row) => !Number.isFinite(row.periodScore) || row.periodScore <= 0)) {
+      throw new Error(`Invalid ${reportType} score`);
+    }
+    if (
+      reportType === 'monthlyAttackers'
+      && report.rows.some((row) => (
+        !Number.isFinite(row.periodLostScore) || row.periodLostScore > row.periodScore
+      ))
+    ) {
+      throw new Error('Monthly attackers filter was not applied');
+    }
+    if (
+      reportType === 'dailyLosses'
+      && report.rows.some((row) => !Number.isFinite(row.periodDestroyedScore))
+    ) {
+      throw new Error('Missing Military Destroyed value in daily losses');
+    }
   }
 }
 

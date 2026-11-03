@@ -5,10 +5,17 @@ const MONTH_NAMES = [
   'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
   'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'
 ];
+const LOSS_PERIOD_LABELS = {
+  '1d': { title: 'Топ потерь вчерашнего дня', column: 'Потеряно за сутки' },
+  '7d': { title: 'Топ потерь за 7 дней', column: 'Потеряно за 7 дней' },
+  '30d': { title: 'Топ потерь за 30 дней', column: 'Потеряно за 30 дней' }
+};
 
 const state = {
   type: document.body.dataset.report,
   report: null,
+  reportIndex: null,
+  lossPeriod: '1d',
   universe: 'all',
   sortKey: 'periodScore',
   sortDirection: 'desc'
@@ -30,6 +37,7 @@ const elements = {
   destroyedHeader: document.querySelector('#destroyedHeader'),
   statusBox: document.querySelector('#statusBox'),
   reportLimitHint: document.querySelector('#reportLimitHint'),
+  lossPeriodToggle: document.querySelector('#lossPeriodToggle'),
   tableBody: document.querySelector('#tableBody')
 };
 
@@ -136,8 +144,9 @@ function renderHeading() {
     elements.destroyedHeader.hidden = true;
     elements.reportLimitHint.textContent = 'Все вселенные — топ-30 · одна вселенная — топ-10 · уничтожено не меньше, чем потеряно';
   } else {
-    elements.title.textContent = 'Топ потерь вчерашнего дня';
-    elements.periodHeaderLabel.textContent = 'Потеряно за сутки';
+    const periodLabels = LOSS_PERIOD_LABELS[state.lossPeriod];
+    elements.title.textContent = periodLabels.title;
+    elements.periodHeaderLabel.textContent = periodLabels.column;
     elements.totalHeaderLabel.textContent = 'Потеряно всего';
     elements.destroyedHeader.hidden = false;
     elements.reportLimitHint.textContent = 'Все вселенные — топ-30 · одна вселенная — топ-10 · Military destroyed = 0 может указывать на небоевое списание';
@@ -145,6 +154,15 @@ function renderHeading() {
 
   elements.metaLine.textContent = `Период: ${formatDateTime(state.report.startGeneratedAt)} — ${formatDateTime(state.report.endGeneratedAt)}`;
   document.title = `${elements.title.textContent} — OGame RU`;
+}
+
+function renderLossPeriodToggle() {
+  if (!elements.lossPeriodToggle) return;
+  for (const button of elements.lossPeriodToggle.querySelectorAll('button[data-period]')) {
+    const isActive = button.dataset.period === state.lossPeriod;
+    button.classList.toggle('active', isActive);
+    button.setAttribute('aria-pressed', String(isActive));
+  }
 }
 
 function updateSortIndicators() {
@@ -214,10 +232,22 @@ function setSort(sortKey) {
 }
 
 async function loadReport() {
-  const indexResponse = await fetch(REPORT_INDEX_URL, { cache: 'no-cache' });
-  if (!indexResponse.ok) throw new Error('Не удалось загрузить список отчётов');
-  const index = await indexResponse.json();
-  const descriptor = index[state.type];
+  if (!state.reportIndex) {
+    const indexResponse = await fetch(REPORT_INDEX_URL, { cache: 'no-cache' });
+    if (!indexResponse.ok) throw new Error('Не удалось загрузить список отчётов');
+    state.reportIndex = await indexResponse.json();
+    if (state.type === 'dailyLosses') {
+      const requestedPeriod = new URL(window.location.href).searchParams.get('period');
+      state.lossPeriod = state.reportIndex.dailyLosses.periods?.[requestedPeriod]
+        ? requestedPeriod
+        : state.reportIndex.dailyLosses.defaultPeriod || '1d';
+    }
+  }
+
+  const baseDescriptor = state.reportIndex[state.type];
+  const descriptor = state.type === 'dailyLosses'
+    ? baseDescriptor?.periods?.[state.lossPeriod]
+    : baseDescriptor;
   if (!descriptor?.path) throw new Error('Отчёт пока недоступен');
 
   const reportResponse = await fetch(
@@ -225,11 +255,13 @@ async function loadReport() {
     { cache: 'no-cache' }
   );
   if (!reportResponse.ok) throw new Error('Не удалось загрузить отчёт');
+  const hadReport = Boolean(state.report);
   state.report = await reportResponse.json();
-  initializeUniverse();
+  if (!hadReport) initializeUniverse();
   syncUniverseSelection();
   renderUniverseFilter();
   renderHeading();
+  renderLossPeriodToggle();
   renderTable();
 }
 
@@ -241,6 +273,20 @@ elements.universeFilter.addEventListener('change', (event) => {
 });
 elements.periodSortButton.addEventListener('click', () => setSort('periodScore'));
 elements.totalSortButton.addEventListener('click', () => setSort('totalScore'));
+elements.lossPeriodToggle?.addEventListener('click', async (event) => {
+  const button = event.target.closest('button[data-period]');
+  if (!button || button.dataset.period === state.lossPeriod) return;
+  state.lossPeriod = button.dataset.period;
+  const url = new URL(window.location.href);
+  url.searchParams.set('period', state.lossPeriod);
+  window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+  setStatus('Загрузка отчёта...');
+  try {
+    await loadReport();
+  } catch (error) {
+    setStatus(error.message, 'error');
+  }
+});
 
 updateThemeToggle();
 loadReport().catch((error) => setStatus(error.message, 'error'));

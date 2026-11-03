@@ -39,6 +39,14 @@
           <span>Вселенная</span>
           <select id="universeFilter"></select>
         </label>
+        <div class="lossPeriodControl">
+          <span>Период</span>
+          <div id="lossPeriodToggle" class="segmentedControl" role="group" aria-label="Период потерь">
+            <button type="button" data-period="1d" aria-pressed="true">Вчера</button>
+            <button type="button" data-period="7d" aria-pressed="false">7 дней</button>
+            <button type="button" data-period="30d" aria-pressed="false">30 дней</button>
+          </div>
+        </div>
         <p id="reportLimitHint" class="reportLimitHint">Все вселенные — топ-30 · одна вселенная — топ-10</p>
       </section>
       <section class="status" id="statusBox" hidden></section>
@@ -55,6 +63,6 @@
         </table>
       </section>
     </main>
-    <script src="report-app.js?v=20261103-destroyed-column" type="module"></script>
+    <script src="report-app.js?v=20261103-loss-periods" type="module"></script>
   </body>
 </html>

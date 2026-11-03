@@ -9,6 +9,11 @@ import {
 export const REPORTS_DIR = resolve(HISTORY_DIR, '..', 'reports');
 const MONTHLY_DIR = resolve(REPORTS_DIR, 'monthly-attackers');
 const DAILY_DIR = resolve(REPORTS_DIR, 'daily-losses');
+const LOSS_PERIODS = [
+  { key: '1d', days: 1, label: 'Вчера' },
+  { key: '7d', days: 7, label: '7 дней' },
+  { key: '30d', days: 30, label: '30 дней' }
+];
 
 function getMonthBoundaries(latestDate) {
   const latest = new Date(`${latestDate}T00:00:00Z`);
@@ -25,6 +30,12 @@ function findSnapshotAtOrAfter(snapshots, targetDate, maximumDate = '') {
   return snapshots
     .filter((date) => date >= targetDate && (!maximumDate || date <= maximumDate))
     .sort()[0] || '';
+}
+
+function subtractDays(date, days) {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() - days);
+  return value.toISOString().slice(0, 10);
 }
 
 async function readSnapshotMeta(snapshotDate) {
@@ -157,7 +168,18 @@ export async function generateReports(historyIndex = null) {
     throw new Error(`Недостаточно данных для отчёта за ${month.id}`);
   }
 
-  const [monthlyAttackers, dailyLosses] = await Promise.all([
+  const lossPeriodStarts = Object.fromEntries(LOSS_PERIODS.map((period) => {
+    const targetDate = subtractDays(latestDate, period.days);
+    const startDate = period.key === '1d'
+      ? previousDate
+      : findSnapshotAtOrAfter(snapshots, targetDate, latestDate);
+    if (!startDate || startDate >= latestDate) {
+      throw new Error(`Недостаточно данных для отчёта потерь за ${period.label}`);
+    }
+    return [period.key, startDate];
+  }));
+
+  const [monthlyAttackers, lossReports] = await Promise.all([
     buildReport({
       id: month.id,
       kind: 'monthly-attackers',
@@ -169,33 +191,41 @@ export async function generateReports(historyIndex = null) {
       endDate: monthEndDate,
       labelDate: month.start
     }),
-    buildReport({
-      id: previousDate,
-      kind: 'daily-losses',
-      statType: '4',
-      comparisonStatType: '6',
-      comparisonField: 'periodDestroyedScore',
-      startDate: previousDate,
-      endDate: latestDate,
-      labelDate: previousDate
-    })
+    Promise.all(LOSS_PERIODS.map(async (period) => [
+      period.key,
+      await buildReport({
+        id: `${latestDate}-${period.key}`,
+        kind: 'daily-losses',
+        statType: '4',
+        comparisonStatType: '6',
+        comparisonField: 'periodDestroyedScore',
+        startDate: lossPeriodStarts[period.key],
+        endDate: latestDate,
+        labelDate: lossPeriodStarts[period.key]
+      })
+    ])).then(Object.fromEntries)
   ]);
+  const dailyLosses = lossReports['1d'];
 
   await Promise.all([
     mkdir(MONTHLY_DIR, { recursive: true }),
     mkdir(DAILY_DIR, { recursive: true })
   ]);
+  const lossReportFiles = LOSS_PERIODS.map((period) => {
+    const report = lossReports[period.key];
+    return writeFile(
+      resolve(DAILY_DIR, `${report.id}.json`),
+      `${JSON.stringify(report)}\n`,
+      'utf8'
+    );
+  });
   await Promise.all([
     writeFile(
       resolve(MONTHLY_DIR, `${monthlyAttackers.id}.json`),
       `${JSON.stringify(monthlyAttackers)}\n`,
       'utf8'
     ),
-    writeFile(
-      resolve(DAILY_DIR, `${dailyLosses.id}.json`),
-      `${JSON.stringify(dailyLosses)}\n`,
-      'utf8'
-    ),
+    ...lossReportFiles,
     writeFile(resolve(REPORTS_DIR, 'index.json'), `${JSON.stringify({
       monthlyAttackers: {
         latest: monthlyAttackers.id,
@@ -203,10 +233,20 @@ export async function generateReports(historyIndex = null) {
       },
       dailyLosses: {
         latest: dailyLosses.id,
-        path: `daily-losses/${dailyLosses.id}.json`
+        path: `daily-losses/${dailyLosses.id}.json`,
+        defaultPeriod: '1d',
+        periods: Object.fromEntries(LOSS_PERIODS.map((period) => {
+          const report = lossReports[period.key];
+          return [period.key, {
+            label: period.label,
+            path: `daily-losses/${report.id}.json`,
+            startDate: report.startDate,
+            endDate: report.endDate
+          }];
+        }))
       }
     })}\n`, 'utf8')
   ]);
 
-  return { monthlyAttackers, dailyLosses };
+  return { monthlyAttackers, dailyLosses, lossReports };
 }
