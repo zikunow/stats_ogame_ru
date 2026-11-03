@@ -130,6 +130,12 @@ for (const reportType of ['monthlyAttackers', 'dailyLosses']) {
   ) {
     throw new Error('Monthly attackers filter was not applied');
   }
+  if (
+    reportType === 'dailyLosses'
+    && report.rows.some((row) => !Number.isFinite(row.periodDestroyedScore))
+  ) {
+    throw new Error('Missing Military Destroyed value in daily losses');
+  }
 }
 
 console.log(`Snapshots: ${index.snapshots.length}`);

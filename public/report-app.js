@@ -27,6 +27,7 @@ const elements = {
   totalSortButton: document.querySelector('#totalSortButton'),
   periodSortIndicator: document.querySelector('#periodSortIndicator'),
   totalSortIndicator: document.querySelector('#totalSortIndicator'),
+  destroyedHeader: document.querySelector('#destroyedHeader'),
   statusBox: document.querySelector('#statusBox'),
   reportLimitHint: document.querySelector('#reportLimitHint'),
   tableBody: document.querySelector('#tableBody')
@@ -132,12 +133,14 @@ function renderHeading() {
     elements.title.textContent = `Топ атакеров месяца — ${MONTH_NAMES[month]}`;
     elements.periodHeaderLabel.textContent = 'Уничтожено за месяц';
     elements.totalHeaderLabel.textContent = 'Уничтожено всего';
+    elements.destroyedHeader.hidden = true;
     elements.reportLimitHint.textContent = 'Все вселенные — топ-30 · одна вселенная — топ-10 · уничтожено не меньше, чем потеряно';
   } else {
     elements.title.textContent = 'Топ потерь вчерашнего дня';
     elements.periodHeaderLabel.textContent = 'Потеряно за сутки';
     elements.totalHeaderLabel.textContent = 'Потеряно всего';
-    elements.reportLimitHint.textContent = 'Все вселенные — топ-30 · одна вселенная — топ-10';
+    elements.destroyedHeader.hidden = false;
+    elements.reportLimitHint.textContent = 'Все вселенные — топ-30 · одна вселенная — топ-10 · Military destroyed = 0 может указывать на небоевое списание';
   }
 
   elements.metaLine.textContent = `Период: ${formatDateTime(state.report.startGeneratedAt)} — ${formatDateTime(state.report.endGeneratedAt)}`;
@@ -174,11 +177,17 @@ function renderTable() {
 
   const tableRows = rows.map((row, index) => {
     const tr = document.createElement('tr');
+    const destroyedCell = createCell(
+      Number.isFinite(row.periodDestroyedScore) ? formatNumber(row.periodDestroyedScore) : '—',
+      row.periodDestroyedScore > 0 ? 'reportDestroyed' : 'muted'
+    );
+    destroyedCell.hidden = state.type === 'monthlyAttackers';
     tr.append(
       createCell(String(index + 1), 'rank'),
       createCell(row.displayName),
       createCell(row.allianceTag || '—', row.allianceTag ? '' : 'muted'),
       createCell(formatNumber(row.periodScore), 'reportScore'),
+      destroyedCell,
       createCell(formatNumber(row.totalScore)),
       createCell(row.universeName),
       createCell(`${row.speed}x`),

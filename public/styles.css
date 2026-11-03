@@ -158,6 +158,12 @@ select {
   font-variant-numeric: tabular-nums;
 }
 
+.reportDestroyed {
+  color: var(--score-military);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 h1 {
   margin: 0 0 5px;
   font-size: clamp(24px, 3vw, 38px);

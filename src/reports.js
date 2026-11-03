@@ -31,7 +31,12 @@ async function readSnapshotMeta(snapshotDate) {
   return JSON.parse(await readFile(resolve(HISTORY_DIR, snapshotDate, 'meta.json'), 'utf8'));
 }
 
-function buildRows(startRows, endRows, comparisonStartRows = null, comparisonEndRows = null) {
+function buildRows(startRows, endRows, {
+  comparisonStartRows = null,
+  comparisonEndRows = null,
+  comparisonField = '',
+  excludeWhenComparisonGreater = false
+} = {}) {
   const startScores = new Map(startRows.map((row) => [
     `${row.universeId}:${row.playerId}`,
     row.score
@@ -52,13 +57,13 @@ function buildRows(startRows, endRows, comparisonStartRows = null, comparisonEnd
       const periodScore = row.score - startScore;
       if (periodScore <= 0) return [];
 
-      let periodLostScore = null;
+      let comparisonPeriodScore = null;
       if (comparisonStartScores && comparisonEndScores) {
         const comparisonStartScore = comparisonStartScores.get(key);
         const comparisonEndScore = comparisonEndScores.get(key);
         if (!Number.isFinite(comparisonStartScore) || !Number.isFinite(comparisonEndScore)) return [];
-        periodLostScore = comparisonEndScore - comparisonStartScore;
-        if (periodLostScore > periodScore) {
+        comparisonPeriodScore = comparisonEndScore - comparisonStartScore;
+        if (excludeWhenComparisonGreater && comparisonPeriodScore > periodScore) {
           excludedRows += 1;
           return [];
         }
@@ -72,7 +77,9 @@ function buildRows(startRows, endRows, comparisonStartRows = null, comparisonEnd
         displayName: row.displayName,
         allianceTag: row.allianceTag,
         periodScore,
-        ...(Number.isFinite(periodLostScore) ? { periodLostScore } : {}),
+        ...(comparisonField && Number.isFinite(comparisonPeriodScore)
+          ? { [comparisonField]: comparisonPeriodScore }
+          : {}),
         totalScore: row.score,
         speed: row.speed,
         speedFleetPeaceful: row.speedFleetPeaceful,
@@ -94,6 +101,8 @@ async function buildReport({
   kind,
   statType,
   comparisonStatType = '',
+  comparisonField = '',
+  excludeWhenComparisonGreater = false,
   startDate,
   endDate,
   labelDate
@@ -105,12 +114,12 @@ async function buildReport({
     readSnapshotMeta(startDate),
     readSnapshotMeta(endDate)
   ]);
-  const { rows, excludedRows } = buildRows(
-    startStats[statType],
-    endStats[statType],
-    comparisonStatType ? startStats[comparisonStatType] : null,
-    comparisonStatType ? endStats[comparisonStatType] : null
-  );
+  const { rows, excludedRows } = buildRows(startStats[statType], endStats[statType], {
+    comparisonStartRows: comparisonStatType ? startStats[comparisonStatType] : null,
+    comparisonEndRows: comparisonStatType ? endStats[comparisonStatType] : null,
+    comparisonField,
+    excludeWhenComparisonGreater
+  });
 
   return {
     id,
@@ -122,7 +131,7 @@ async function buildReport({
     endGeneratedAt: endMeta.generatedAt,
     generatedAt: new Date().toISOString(),
     universes: endMeta.universes.filter((universe) => universe.status === 'ok'),
-    filter: comparisonStatType
+    filter: excludeWhenComparisonGreater
       ? { rule: 'destroyed-not-less-than-lost', excludedRows }
       : null,
     rows
@@ -154,6 +163,8 @@ export async function generateReports(historyIndex = null) {
       kind: 'monthly-attackers',
       statType: '6',
       comparisonStatType: '4',
+      comparisonField: 'periodLostScore',
+      excludeWhenComparisonGreater: true,
       startDate: monthStartDate,
       endDate: monthEndDate,
       labelDate: month.start
@@ -162,6 +173,8 @@ export async function generateReports(historyIndex = null) {
       id: previousDate,
       kind: 'daily-losses',
       statType: '4',
+      comparisonStatType: '6',
+      comparisonField: 'periodDestroyedScore',
       startDate: previousDate,
       endDate: latestDate,
       labelDate: previousDate
