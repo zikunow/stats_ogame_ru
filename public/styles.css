@@ -138,6 +138,33 @@ select {
   width: min(320px, 100%);
 }
 
+.reportToolbar.attackerToolbar {
+  display: grid;
+  grid-template-columns: minmax(210px, 250px) minmax(0, 1fr);
+  gap: 12px 16px;
+  align-items: end;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  padding: 14px;
+}
+
+.attackerToolbar label {
+  width: 100%;
+}
+
+.attackerToolbar .reportLimitHint {
+  grid-column: 1 / -1;
+  min-height: 0;
+  border-top: 1px solid var(--line);
+  padding: 10px 2px 0;
+  font-size: 12px;
+}
+
+.attackerPeriodControl {
+  min-width: 0;
+}
+
 .lossPeriodControl > span,
 .attackerPeriodControl > span {
   display: block;
@@ -170,27 +197,52 @@ select {
 }
 
 .attackerSegmentedControl {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.9fr) minmax(320px, 1.35fr) 88px 88px;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   max-width: 100%;
   overflow: visible;
 }
 
 .attackerSegmentedControl select {
-  width: auto;
-  max-width: min(310px, 30vw);
+  width: 100%;
+  max-width: none;
   min-height: 40px;
-  border: 0;
-  border-right: 1px solid var(--line);
-  border-radius: 0;
-  background-color: transparent;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background-color: var(--panel);
   color: var(--text);
   cursor: pointer;
+  padding-right: 30px;
 }
 
 .attackerSegmentedControl select:hover,
 .attackerSegmentedControl select:focus-visible,
 .attackerSegmentedControl select.active {
+  border-color: var(--accent);
   background-color: var(--accent-soft);
   color: var(--accent-strong);
+}
+
+.attackerSegmentedControl button {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  padding: 0 10px;
+}
+
+.attackerSegmentedControl button:last-child {
+  border-right: 1px solid var(--line);
+}
+
+.attackerSegmentedControl button.active {
+  border-color: var(--accent);
 }
 
 .segmentedControl button:hover,
@@ -371,6 +423,14 @@ p {
 
   .toolbar .search {
     grid-column: span 2;
+  }
+
+  .reportToolbar.attackerToolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .attackerToolbar label {
+    width: min(320px, 100%);
   }
 }
 
@@ -798,8 +858,10 @@ tbody tr:hover {
     grid-column: auto;
   }
 
-  .reportToolbar {
-    display: block;
+  .reportToolbar,
+  .reportToolbar.attackerToolbar {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .attackerPeriodControl,
@@ -814,17 +876,13 @@ tbody tr:hover {
   }
 
   .attackerSegmentedControl select {
+    grid-column: 1 / -1;
     width: 100%;
     max-width: none;
-    border-bottom: 1px solid var(--line);
-  }
-
-  .attackerSegmentedControl select:nth-child(2) {
-    border-right: 0;
   }
 
   .attackerSegmentedControl button {
-    border-right: 1px solid var(--line);
+    width: 100%;
   }
 
   .reportLimitHint {

@@ -15,7 +15,7 @@
         document.documentElement.dataset.theme = theme;
       })();
     </script>
-    <link rel="stylesheet" href="styles.css?v=20261103-attacker-periods">
+    <link rel="stylesheet" href="styles.css?v=20261103-attacker-layout">
   </head>
   <body data-report="attackers">
     <main class="shell reportShell">
@@ -34,7 +34,7 @@
         <a href="attackers.html" aria-current="page">Топ атакеры</a>
         <a href="losses.html">Потери за сутки</a>
       </nav>
-      <section class="reportToolbar" aria-label="Фильтры отчёта">
+      <section class="reportToolbar attackerToolbar" aria-label="Фильтры отчёта">
         <label>
           <span>Вселенная</span>
           <select id="universeFilter"></select>
@@ -64,6 +64,6 @@
         </table>
       </section>
     </main>
-    <script src="report-app.js?v=20261103-attacker-periods" type="module"></script>
+    <script src="report-app.js?v=20261103-attacker-layout" type="module"></script>
   </body>
 </html>
