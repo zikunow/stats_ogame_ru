@@ -122,6 +122,14 @@ for (const reportType of ['monthlyAttackers', 'dailyLosses']) {
   if (report.rows.some((row) => !Number.isFinite(row.periodScore) || row.periodScore <= 0)) {
     throw new Error(`Invalid ${reportType} score`);
   }
+  if (
+    reportType === 'monthlyAttackers'
+    && report.rows.some((row) => (
+      !Number.isFinite(row.periodLostScore) || row.periodLostScore > row.periodScore
+    ))
+  ) {
+    throw new Error('Monthly attackers filter was not applied');
+  }
 }
 
 console.log(`Snapshots: ${index.snapshots.length}`);

@@ -31,18 +31,38 @@ async function readSnapshotMeta(snapshotDate) {
   return JSON.parse(await readFile(resolve(HISTORY_DIR, snapshotDate, 'meta.json'), 'utf8'));
 }
 
-function buildRows(startRows, endRows) {
+function buildRows(startRows, endRows, comparisonStartRows = null, comparisonEndRows = null) {
   const startScores = new Map(startRows.map((row) => [
     `${row.universeId}:${row.playerId}`,
     row.score
   ]));
+  const comparisonStartScores = comparisonStartRows
+    ? new Map(comparisonStartRows.map((row) => [`${row.universeId}:${row.playerId}`, row.score]))
+    : null;
+  const comparisonEndScores = comparisonEndRows
+    ? new Map(comparisonEndRows.map((row) => [`${row.universeId}:${row.playerId}`, row.score]))
+    : null;
+  let excludedRows = 0;
 
-  return endRows
+  const rows = endRows
     .flatMap((row) => {
-      const startScore = startScores.get(`${row.universeId}:${row.playerId}`);
+      const key = `${row.universeId}:${row.playerId}`;
+      const startScore = startScores.get(key);
       if (!Number.isFinite(startScore)) return [];
       const periodScore = row.score - startScore;
       if (periodScore <= 0) return [];
+
+      let periodLostScore = null;
+      if (comparisonStartScores && comparisonEndScores) {
+        const comparisonStartScore = comparisonStartScores.get(key);
+        const comparisonEndScore = comparisonEndScores.get(key);
+        if (!Number.isFinite(comparisonStartScore) || !Number.isFinite(comparisonEndScore)) return [];
+        periodLostScore = comparisonEndScore - comparisonStartScore;
+        if (periodLostScore > periodScore) {
+          excludedRows += 1;
+          return [];
+        }
+      }
 
       return [{
         universeId: row.universeId,
@@ -52,6 +72,7 @@ function buildRows(startRows, endRows) {
         displayName: row.displayName,
         allianceTag: row.allianceTag,
         periodScore,
+        ...(Number.isFinite(periodLostScore) ? { periodLostScore } : {}),
         totalScore: row.score,
         speed: row.speed,
         speedFleetPeaceful: row.speedFleetPeaceful,
@@ -64,15 +85,32 @@ function buildRows(startRows, endRows) {
       || b.totalScore - a.totalScore
       || a.displayName.localeCompare(b.displayName, 'ru')
     ));
+
+  return { rows, excludedRows };
 }
 
-async function buildReport({ id, kind, statType, startDate, endDate, labelDate }) {
+async function buildReport({
+  id,
+  kind,
+  statType,
+  comparisonStatType = '',
+  startDate,
+  endDate,
+  labelDate
+}) {
+  const statTypes = [...new Set([statType, comparisonStatType].filter(Boolean))];
   const [startStats, endStats, startMeta, endMeta] = await Promise.all([
-    readSnapshotStats(startDate, [statType]),
-    readSnapshotStats(endDate, [statType]),
+    readSnapshotStats(startDate, statTypes),
+    readSnapshotStats(endDate, statTypes),
     readSnapshotMeta(startDate),
     readSnapshotMeta(endDate)
   ]);
+  const { rows, excludedRows } = buildRows(
+    startStats[statType],
+    endStats[statType],
+    comparisonStatType ? startStats[comparisonStatType] : null,
+    comparisonStatType ? endStats[comparisonStatType] : null
+  );
 
   return {
     id,
@@ -84,7 +122,10 @@ async function buildReport({ id, kind, statType, startDate, endDate, labelDate }
     endGeneratedAt: endMeta.generatedAt,
     generatedAt: new Date().toISOString(),
     universes: endMeta.universes.filter((universe) => universe.status === 'ok'),
-    rows: buildRows(startStats[statType], endStats[statType])
+    filter: comparisonStatType
+      ? { rule: 'destroyed-not-less-than-lost', excludedRows }
+      : null,
+    rows
   };
 }
 
@@ -112,6 +153,7 @@ export async function generateReports(historyIndex = null) {
       id: month.id,
       kind: 'monthly-attackers',
       statType: '6',
+      comparisonStatType: '4',
       startDate: monthStartDate,
       endDate: monthEndDate,
       labelDate: month.start

@@ -28,6 +28,7 @@ const elements = {
   periodSortIndicator: document.querySelector('#periodSortIndicator'),
   totalSortIndicator: document.querySelector('#totalSortIndicator'),
   statusBox: document.querySelector('#statusBox'),
+  reportLimitHint: document.querySelector('#reportLimitHint'),
   tableBody: document.querySelector('#tableBody')
 };
 
@@ -131,10 +132,12 @@ function renderHeading() {
     elements.title.textContent = `Топ атакеров месяца — ${MONTH_NAMES[month]}`;
     elements.periodHeaderLabel.textContent = 'Уничтожено за месяц';
     elements.totalHeaderLabel.textContent = 'Уничтожено всего';
+    elements.reportLimitHint.textContent = 'Все вселенные — топ-30 · одна вселенная — топ-10 · уничтожено не меньше, чем потеряно';
   } else {
     elements.title.textContent = 'Топ потерь вчерашнего дня';
     elements.periodHeaderLabel.textContent = 'Потеряно за сутки';
     elements.totalHeaderLabel.textContent = 'Потеряно всего';
+    elements.reportLimitHint.textContent = 'Все вселенные — топ-30 · одна вселенная — топ-10';
   }
 
   elements.metaLine.textContent = `Период: ${formatDateTime(state.report.startGeneratedAt)} — ${formatDateTime(state.report.endGeneratedAt)}`;
@@ -208,7 +211,10 @@ async function loadReport() {
   const descriptor = index[state.type];
   if (!descriptor?.path) throw new Error('Отчёт пока недоступен');
 
-  const reportResponse = await fetch(new URL(`data/reports/${descriptor.path}`, window.location.href));
+  const reportResponse = await fetch(
+    new URL(`data/reports/${descriptor.path}`, window.location.href),
+    { cache: 'no-cache' }
+  );
   if (!reportResponse.ok) throw new Error('Не удалось загрузить отчёт');
   state.report = await reportResponse.json();
   initializeUniverse();
