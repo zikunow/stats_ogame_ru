@@ -10,11 +10,19 @@ const LOSS_PERIOD_LABELS = {
   '7d': { title: 'Топ потерь за 7 дней', column: 'Потеряно за 7 дней' },
   '30d': { title: 'Топ потерь за 30 дней', column: 'Потеряно за 30 дней' }
 };
+const ATTACKER_PERIOD_LABELS = {
+  month: { column: 'Уничтожено за месяц' },
+  week: { column: 'Уничтожено за неделю' },
+  '7d': { label: 'Последние 7 дней', column: 'Уничтожено за 7 дней' },
+  '30d': { label: 'Последние 30 дней', column: 'Уничтожено за 30 дней' }
+};
 
 const state = {
   type: document.body.dataset.report,
   report: null,
   reportIndex: null,
+  attackerPeriod: 'month',
+  attackerId: '',
   lossPeriod: '1d',
   universe: 'all',
   sortKey: 'periodScore',
@@ -37,6 +45,9 @@ const elements = {
   destroyedHeader: document.querySelector('#destroyedHeader'),
   statusBox: document.querySelector('#statusBox'),
   reportLimitHint: document.querySelector('#reportLimitHint'),
+  attackerPeriodToggle: document.querySelector('#attackerPeriodToggle'),
+  attackerMonthSelect: document.querySelector('#attackerMonthSelect'),
+  attackerWeekSelect: document.querySelector('#attackerWeekSelect'),
   lossPeriodToggle: document.querySelector('#lossPeriodToggle'),
   tableBody: document.querySelector('#tableBody')
 };
@@ -50,6 +61,13 @@ function formatDateTime(value) {
     dateStyle: 'medium',
     timeStyle: 'short'
   }).format(new Date(value));
+}
+
+function formatShortDate(value) {
+  return new Intl.DateTimeFormat('ru-RU', {
+    day: '2-digit',
+    month: '2-digit'
+  }).format(new Date(`${value}T00:00:00Z`));
 }
 
 function normalizeUniverseSlug(value) {
@@ -135,11 +153,10 @@ function renderUniverseFilter() {
 }
 
 function renderHeading() {
-  const isMonthly = state.type === 'monthlyAttackers';
-  if (isMonthly) {
-    const month = new Date(`${state.report.labelDate}T00:00:00Z`).getUTCMonth();
-    elements.title.textContent = `Топ атакеров месяца — ${MONTH_NAMES[month]}`;
-    elements.periodHeaderLabel.textContent = 'Уничтожено за месяц';
+  const isAttackers = state.type === 'attackers';
+  if (isAttackers) {
+    elements.title.textContent = 'Топ атакеры';
+    elements.periodHeaderLabel.textContent = ATTACKER_PERIOD_LABELS[state.attackerPeriod].column;
     elements.totalHeaderLabel.textContent = 'Уничтожено всего';
     elements.destroyedHeader.hidden = true;
     elements.reportLimitHint.textContent = 'Все вселенные — топ-30 · одна вселенная — топ-10 · уничтожено не меньше, чем потеряно';
@@ -152,8 +169,65 @@ function renderHeading() {
     elements.reportLimitHint.textContent = 'Все вселенные — топ-30 · одна вселенная — топ-10 · Military destroyed = 0 может указывать на небоевое списание';
   }
 
-  elements.metaLine.textContent = `Период: ${formatDateTime(state.report.startGeneratedAt)} — ${formatDateTime(state.report.endGeneratedAt)}`;
+  const selectedPeriod = isAttackers ? getAttackerPeriodLabel() : '';
+  elements.metaLine.textContent = `${selectedPeriod ? `${selectedPeriod} · ` : ''}Период: ${formatDateTime(state.report.startGeneratedAt)} — ${formatDateTime(state.report.endGeneratedAt)}`;
   document.title = `${elements.title.textContent} — OGame RU`;
+}
+
+function getMonthLabel(item) {
+  const value = new Date(`${item.startDate}T00:00:00Z`);
+  const month = MONTH_NAMES[value.getUTCMonth()];
+  const currentYear = new Date().getFullYear();
+  return `Атакер месяца — ${month}${value.getUTCFullYear() === currentYear ? '' : ` ${value.getUTCFullYear()}`}`;
+}
+
+function getWeekLabel(item) {
+  const lastDay = new Date(`${item.endDate}T00:00:00Z`);
+  lastDay.setUTCDate(lastDay.getUTCDate() - 1);
+  const year = item.isoYear === new Date().getFullYear() ? '' : `, ${item.isoYear}`;
+  return `Атакер недели — Неделя ${item.week}${year} · ${formatShortDate(item.startDate)}–${formatShortDate(lastDay.toISOString().slice(0, 10))}`;
+}
+
+function getAttackerPeriodLabel() {
+  const periods = state.reportIndex.attackers.periods;
+  if (state.attackerPeriod === 'month') {
+    return getMonthLabel(periods.month.items.find((item) => item.id === state.attackerId));
+  }
+  if (state.attackerPeriod === 'week') {
+    return getWeekLabel(periods.week.items.find((item) => item.id === state.attackerId));
+  }
+  return ATTACKER_PERIOD_LABELS[state.attackerPeriod].label;
+}
+
+function createReportOption(item, label) {
+  const option = document.createElement('option');
+  option.value = item.id;
+  option.textContent = label;
+  return option;
+}
+
+function renderAttackerPeriodControls() {
+  if (!elements.attackerPeriodToggle) return;
+  const periods = state.reportIndex.attackers.periods;
+  elements.attackerMonthSelect.replaceChildren(...periods.month.items.map((item) => (
+    createReportOption(item, getMonthLabel(item))
+  )));
+  elements.attackerWeekSelect.replaceChildren(...periods.week.items.map((item) => (
+    createReportOption(item, getWeekLabel(item))
+  )));
+  elements.attackerMonthSelect.value = state.attackerPeriod === 'month'
+    ? state.attackerId
+    : periods.month.latest;
+  elements.attackerWeekSelect.value = state.attackerPeriod === 'week'
+    ? state.attackerId
+    : periods.week.latest;
+  elements.attackerMonthSelect.classList.toggle('active', state.attackerPeriod === 'month');
+  elements.attackerWeekSelect.classList.toggle('active', state.attackerPeriod === 'week');
+  for (const button of elements.attackerPeriodToggle.querySelectorAll('button[data-attacker-period]')) {
+    const isActive = button.dataset.attackerPeriod === state.attackerPeriod;
+    button.classList.toggle('active', isActive);
+    button.setAttribute('aria-pressed', String(isActive));
+  }
 }
 
 function renderLossPeriodToggle() {
@@ -199,7 +273,7 @@ function renderTable() {
       Number.isFinite(row.periodDestroyedScore) ? formatNumber(row.periodDestroyedScore) : '—',
       row.periodDestroyedScore > 0 ? 'reportDestroyed' : 'muted'
     );
-    destroyedCell.hidden = state.type === 'monthlyAttackers';
+    destroyedCell.hidden = state.type === 'attackers';
     tr.append(
       createCell(String(index + 1), 'rank'),
       createCell(row.displayName),
@@ -236,18 +310,37 @@ async function loadReport() {
     const indexResponse = await fetch(REPORT_INDEX_URL, { cache: 'no-cache' });
     if (!indexResponse.ok) throw new Error('Не удалось загрузить список отчётов');
     state.reportIndex = await indexResponse.json();
+    const url = new URL(window.location.href);
     if (state.type === 'dailyLosses') {
-      const requestedPeriod = new URL(window.location.href).searchParams.get('period');
+      const requestedPeriod = url.searchParams.get('period');
       state.lossPeriod = state.reportIndex.dailyLosses.periods?.[requestedPeriod]
         ? requestedPeriod
         : state.reportIndex.dailyLosses.defaultPeriod || '1d';
+    } else if (state.type === 'attackers') {
+      const periods = state.reportIndex.attackers.periods;
+      const requestedPeriod = url.searchParams.get('period');
+      state.attackerPeriod = periods[requestedPeriod]
+        ? requestedPeriod
+        : state.reportIndex.attackers.defaultPeriod || 'month';
+      if (state.attackerPeriod === 'month' || state.attackerPeriod === 'week') {
+        const period = periods[state.attackerPeriod];
+        const requestedId = url.searchParams.get('id');
+        state.attackerId = period.items.some((item) => item.id === requestedId)
+          ? requestedId
+          : period.latest;
+      }
     }
   }
 
   const baseDescriptor = state.reportIndex[state.type];
-  const descriptor = state.type === 'dailyLosses'
-    ? baseDescriptor?.periods?.[state.lossPeriod]
-    : baseDescriptor;
+  let descriptor = baseDescriptor;
+  if (state.type === 'dailyLosses') descriptor = baseDescriptor?.periods?.[state.lossPeriod];
+  if (state.type === 'attackers') {
+    const period = baseDescriptor?.periods?.[state.attackerPeriod];
+    descriptor = state.attackerPeriod === 'month' || state.attackerPeriod === 'week'
+      ? period?.items.find((item) => item.id === state.attackerId)
+      : period;
+  }
   if (!descriptor?.path) throw new Error('Отчёт пока недоступен');
 
   const reportResponse = await fetch(
@@ -261,6 +354,7 @@ async function loadReport() {
   syncUniverseSelection();
   renderUniverseFilter();
   renderHeading();
+  renderAttackerPeriodControls();
   renderLossPeriodToggle();
   renderTable();
 }
@@ -273,6 +367,39 @@ elements.universeFilter.addEventListener('change', (event) => {
 });
 elements.periodSortButton.addEventListener('click', () => setSort('periodScore'));
 elements.totalSortButton.addEventListener('click', () => setSort('totalScore'));
+async function selectAttackerPeriod(period, id = '') {
+  state.attackerPeriod = period;
+  state.attackerId = id;
+  const url = new URL(window.location.href);
+  url.searchParams.set('period', period);
+  if (id) url.searchParams.set('id', id);
+  else url.searchParams.delete('id');
+  window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+  setStatus('Загрузка отчёта...');
+  try {
+    await loadReport();
+  } catch (error) {
+    setStatus(error.message, 'error');
+  }
+}
+
+elements.attackerMonthSelect?.addEventListener('change', (event) => {
+  selectAttackerPeriod('month', event.target.value);
+});
+elements.attackerMonthSelect?.addEventListener('focus', (event) => {
+  if (state.attackerPeriod !== 'month') selectAttackerPeriod('month', event.target.value);
+});
+elements.attackerWeekSelect?.addEventListener('change', (event) => {
+  selectAttackerPeriod('week', event.target.value);
+});
+elements.attackerWeekSelect?.addEventListener('focus', (event) => {
+  if (state.attackerPeriod !== 'week') selectAttackerPeriod('week', event.target.value);
+});
+elements.attackerPeriodToggle?.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-attacker-period]');
+  if (!button || button.dataset.attackerPeriod === state.attackerPeriod) return;
+  selectAttackerPeriod(button.dataset.attackerPeriod);
+});
 elements.lossPeriodToggle?.addEventListener('click', async (event) => {
   const button = event.target.closest('button[data-period]');
   if (!button || button.dataset.period === state.lossPeriod) return;

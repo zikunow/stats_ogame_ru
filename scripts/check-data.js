@@ -109,15 +109,30 @@ for (const militaryRow of latestStats['3']) {
 }
 
 const reportsIndex = JSON.parse(await readFile(resolve(REPORTS_DIR, 'index.json'), 'utf8'));
-for (const reportType of ['monthlyAttackers', 'dailyLosses']) {
-  const descriptor = reportsIndex[reportType];
-  if (!descriptor?.latest || !descriptor.path) throw new Error(`Missing ${reportType} report`);
-  const reportDescriptors = reportType === 'dailyLosses'
-    ? Object.values(descriptor.periods || {})
-    : [descriptor];
-  if (reportType === 'dailyLosses' && !['1d', '7d', '30d'].every((period) => descriptor.periods?.[period])) {
-    throw new Error('Missing daily losses period');
-  }
+const attackerPeriods = reportsIndex.attackers?.periods;
+if (
+  reportsIndex.attackers?.defaultPeriod !== 'month'
+  || !attackerPeriods?.month?.items?.length
+  || !attackerPeriods?.week?.items?.length
+  || !['7d', '30d'].every((period) => attackerPeriods[period]?.path)
+) {
+  throw new Error('Missing attacker report period');
+}
+const attackerDescriptors = [
+  ...attackerPeriods.month.items,
+  ...attackerPeriods.week.items,
+  attackerPeriods['7d'],
+  attackerPeriods['30d']
+];
+const lossPeriods = reportsIndex.dailyLosses?.periods;
+if (!['1d', '7d', '30d'].every((period) => lossPeriods?.[period]?.path)) {
+  throw new Error('Missing daily losses period');
+}
+
+for (const [reportType, reportDescriptors] of [
+  ['attackers', attackerDescriptors],
+  ['dailyLosses', Object.values(lossPeriods)]
+]) {
   for (const reportDescriptor of reportDescriptors) {
     const report = JSON.parse(await readFile(resolve(REPORTS_DIR, reportDescriptor.path), 'utf8'));
     if (!Array.isArray(report.rows) || !Array.isArray(report.universes)) {
@@ -130,7 +145,7 @@ for (const reportType of ['monthlyAttackers', 'dailyLosses']) {
       throw new Error(`Invalid ${reportType} score`);
     }
     if (
-      reportType === 'monthlyAttackers'
+      reportType === 'attackers'
       && report.rows.some((row) => (
         !Number.isFinite(row.periodLostScore) || row.periodLostScore > row.periodScore
       ))
@@ -149,5 +164,5 @@ for (const reportType of ['monthlyAttackers', 'dailyLosses']) {
 console.log(`Snapshots: ${index.snapshots.length}`);
 console.log(`Latest: ${index.latest}`);
 console.log(`Universes: ${latestMeta.universes.length}`);
-console.log(`Reports: ${reportsIndex.monthlyAttackers.latest}, ${reportsIndex.dailyLosses.latest}`);
+console.log(`Reports: ${attackerPeriods.month.latest}, ${attackerPeriods.week.latest}, ${reportsIndex.dailyLosses.latest}`);
 console.log('Data checks passed');

@@ -8,22 +8,89 @@ import {
 
 export const REPORTS_DIR = resolve(HISTORY_DIR, '..', 'reports');
 const MONTHLY_DIR = resolve(REPORTS_DIR, 'monthly-attackers');
+const WEEKLY_DIR = resolve(REPORTS_DIR, 'weekly-attackers');
+const ROLLING_ATTACKERS_DIR = resolve(REPORTS_DIR, 'rolling-attackers');
 const DAILY_DIR = resolve(REPORTS_DIR, 'daily-losses');
+const ATTACKER_ROLLING_PERIODS = [
+  { key: '7d', days: 7, label: '7 дней' },
+  { key: '30d', days: 30, label: '30 дней' }
+];
 const LOSS_PERIODS = [
   { key: '1d', days: 1, label: 'Вчера' },
   { key: '7d', days: 7, label: '7 дней' },
   { key: '30d', days: 30, label: '30 дней' }
 ];
 
-function getMonthBoundaries(latestDate) {
-  const latest = new Date(`${latestDate}T00:00:00Z`);
-  const end = new Date(Date.UTC(latest.getUTCFullYear(), latest.getUTCMonth(), 1));
-  const start = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - 1, 1));
-  return {
-    id: start.toISOString().slice(0, 7),
-    start: start.toISOString().slice(0, 10),
-    end: end.toISOString().slice(0, 10)
-  };
+function toDate(value) {
+  return new Date(`${value}T00:00:00Z`);
+}
+
+function toDateString(value) {
+  return value.toISOString().slice(0, 10);
+}
+
+function addDays(date, days) {
+  const value = toDate(date);
+  value.setUTCDate(value.getUTCDate() + days);
+  return toDateString(value);
+}
+
+function enumerateCompleteMonths(snapshots, latestDate) {
+  const snapshotSet = new Set(snapshots);
+  const earliest = toDate(snapshots[0]);
+  const latest = toDate(latestDate);
+  const currentMonthStart = new Date(Date.UTC(latest.getUTCFullYear(), latest.getUTCMonth(), 1));
+  const cursor = new Date(Date.UTC(earliest.getUTCFullYear(), earliest.getUTCMonth(), 1));
+  const months = [];
+
+  while (cursor < currentMonthStart) {
+    const start = toDateString(cursor);
+    const endValue = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1));
+    const end = toDateString(endValue);
+    if (snapshotSet.has(start) && snapshotSet.has(end)) {
+      months.push({ id: start.slice(0, 7), start, end });
+    }
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+  }
+
+  return months.reverse();
+}
+
+function getIsoWeek(date) {
+  const value = toDate(date);
+  const day = value.getUTCDay() || 7;
+  value.setUTCDate(value.getUTCDate() + 4 - day);
+  const isoYear = value.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(isoYear, 0, 1));
+  const week = Math.ceil((((value - yearStart) / 86400000) + 1) / 7);
+  return { isoYear, week };
+}
+
+function enumerateCompleteWeeks(snapshots, latestDate) {
+  const snapshotSet = new Set(snapshots);
+  const earliest = snapshots[0];
+  const earliestValue = toDate(earliest);
+  const earliestDay = earliestValue.getUTCDay() || 7;
+  let cursor = addDays(earliest, 8 - earliestDay);
+  if (earliestDay === 1) cursor = earliest;
+  const weeks = [];
+
+  while (addDays(cursor, 7) <= latestDate) {
+    const end = addDays(cursor, 7);
+    if (snapshotSet.has(cursor) && snapshotSet.has(end)) {
+      const { isoYear, week } = getIsoWeek(cursor);
+      weeks.push({
+        id: `${isoYear}-W${String(week).padStart(2, '0')}`,
+        start: cursor,
+        end,
+        isoYear,
+        week
+      });
+    }
+    cursor = end;
+  }
+
+  return weeks.reverse();
 }
 
 function findSnapshotAtOrAfter(snapshots, targetDate, maximumDate = '') {
@@ -33,9 +100,7 @@ function findSnapshotAtOrAfter(snapshots, targetDate, maximumDate = '') {
 }
 
 function subtractDays(date, days) {
-  const value = new Date(`${date}T00:00:00Z`);
-  value.setUTCDate(value.getUTCDate() - days);
-  return value.toISOString().slice(0, 10);
+  return addDays(date, -days);
 }
 
 async function readSnapshotMeta(snapshotDate) {
@@ -140,7 +205,7 @@ async function buildReport({
     endDate,
     startGeneratedAt: startMeta.generatedAt,
     endGeneratedAt: endMeta.generatedAt,
-    generatedAt: new Date().toISOString(),
+    generatedAt: endMeta.generatedAt,
     universes: endMeta.universes.filter((universe) => universe.status === 'ok'),
     filter: excludeWhenComparisonGreater
       ? { rule: 'destroyed-not-less-than-lost', excludedRows }
@@ -161,12 +226,19 @@ export async function generateReports(historyIndex = null) {
   const previousDate = latestIndex > 0 ? snapshots[latestIndex - 1] : '';
   if (!previousDate) throw new Error('Не найден предыдущий снимок');
 
-  const month = getMonthBoundaries(latestDate);
-  const monthStartDate = findSnapshotAtOrAfter(snapshots, month.start, month.end);
-  const monthEndDate = findSnapshotAtOrAfter(snapshots, month.end, latestDate);
-  if (!monthStartDate || !monthEndDate || monthStartDate >= monthEndDate) {
-    throw new Error(`Недостаточно данных для отчёта за ${month.id}`);
-  }
+  const completeMonths = enumerateCompleteMonths(snapshots, latestDate);
+  const completeWeeks = enumerateCompleteWeeks(snapshots, latestDate);
+  if (!completeMonths.length) throw new Error('Нет полностью собранного месяца для отчёта атакеров');
+  if (!completeWeeks.length) throw new Error('Нет полностью собранной недели для отчёта атакеров');
+
+  const attackerRollingStarts = Object.fromEntries(ATTACKER_ROLLING_PERIODS.map((period) => {
+    const targetDate = subtractDays(latestDate, period.days);
+    const startDate = findSnapshotAtOrAfter(snapshots, targetDate, latestDate);
+    if (!startDate || startDate >= latestDate) {
+      throw new Error(`Недостаточно данных для отчёта атакеров за ${period.label}`);
+    }
+    return [period.key, startDate];
+  }));
 
   const lossPeriodStarts = Object.fromEntries(LOSS_PERIODS.map((period) => {
     const targetDate = subtractDays(latestDate, period.days);
@@ -179,18 +251,40 @@ export async function generateReports(historyIndex = null) {
     return [period.key, startDate];
   }));
 
-  const [monthlyAttackers, lossReports] = await Promise.all([
-    buildReport({
+  const attackerOptions = {
+    statType: '6',
+    comparisonStatType: '4',
+    comparisonField: 'periodLostScore',
+    excludeWhenComparisonGreater: true
+  };
+  const [monthReports, weekReports, attackerRollingReports, lossReports] = await Promise.all([
+    Promise.all(completeMonths.map((month) => buildReport({
+      ...attackerOptions,
       id: month.id,
       kind: 'monthly-attackers',
-      statType: '6',
-      comparisonStatType: '4',
-      comparisonField: 'periodLostScore',
-      excludeWhenComparisonGreater: true,
-      startDate: monthStartDate,
-      endDate: monthEndDate,
+      startDate: month.start,
+      endDate: month.end,
       labelDate: month.start
-    }),
+    }))),
+    Promise.all(completeWeeks.map((week) => buildReport({
+      ...attackerOptions,
+      id: week.id,
+      kind: 'weekly-attackers',
+      startDate: week.start,
+      endDate: week.end,
+      labelDate: week.start
+    }))),
+    Promise.all(ATTACKER_ROLLING_PERIODS.map(async (period) => [
+      period.key,
+      await buildReport({
+        ...attackerOptions,
+        id: `${latestDate}-${period.key}`,
+        kind: 'rolling-attackers',
+        startDate: attackerRollingStarts[period.key],
+        endDate: latestDate,
+        labelDate: attackerRollingStarts[period.key]
+      })
+    ])).then(Object.fromEntries),
     Promise.all(LOSS_PERIODS.map(async (period) => [
       period.key,
       await buildReport({
@@ -205,12 +299,34 @@ export async function generateReports(historyIndex = null) {
       })
     ])).then(Object.fromEntries)
   ]);
+  const monthlyAttackers = monthReports[0];
+  const weeklyAttackers = weekReports[0];
   const dailyLosses = lossReports['1d'];
 
   await Promise.all([
     mkdir(MONTHLY_DIR, { recursive: true }),
+    mkdir(WEEKLY_DIR, { recursive: true }),
+    mkdir(ROLLING_ATTACKERS_DIR, { recursive: true }),
     mkdir(DAILY_DIR, { recursive: true })
   ]);
+  const monthReportFiles = monthReports.map((report) => writeFile(
+    resolve(MONTHLY_DIR, `${report.id}.json`),
+    `${JSON.stringify(report)}\n`,
+    'utf8'
+  ));
+  const weekReportFiles = weekReports.map((report) => writeFile(
+    resolve(WEEKLY_DIR, `${report.id}.json`),
+    `${JSON.stringify(report)}\n`,
+    'utf8'
+  ));
+  const attackerRollingReportFiles = ATTACKER_ROLLING_PERIODS.map((period) => {
+    const report = attackerRollingReports[period.key];
+    return writeFile(
+      resolve(ROLLING_ATTACKERS_DIR, `${period.key}.json`),
+      `${JSON.stringify(report)}\n`,
+      'utf8'
+    );
+  });
   const lossReportFiles = LOSS_PERIODS.map((period) => {
     const report = lossReports[period.key];
     return writeFile(
@@ -220,13 +336,48 @@ export async function generateReports(historyIndex = null) {
     );
   });
   await Promise.all([
-    writeFile(
-      resolve(MONTHLY_DIR, `${monthlyAttackers.id}.json`),
-      `${JSON.stringify(monthlyAttackers)}\n`,
-      'utf8'
-    ),
+    ...monthReportFiles,
+    ...weekReportFiles,
+    ...attackerRollingReportFiles,
     ...lossReportFiles,
     writeFile(resolve(REPORTS_DIR, 'index.json'), `${JSON.stringify({
+      attackers: {
+        defaultPeriod: 'month',
+        periods: {
+          month: {
+            latest: monthlyAttackers.id,
+            items: monthReports.map((report) => ({
+              id: report.id,
+              path: `monthly-attackers/${report.id}.json`,
+              startDate: report.startDate,
+              endDate: report.endDate
+            }))
+          },
+          week: {
+            latest: weeklyAttackers.id,
+            items: weekReports.map((report) => {
+              const week = completeWeeks.find((item) => item.id === report.id);
+              return {
+                id: report.id,
+                path: `weekly-attackers/${report.id}.json`,
+                startDate: report.startDate,
+                endDate: report.endDate,
+                isoYear: week.isoYear,
+                week: week.week
+              };
+            })
+          },
+          ...Object.fromEntries(ATTACKER_ROLLING_PERIODS.map((period) => {
+            const report = attackerRollingReports[period.key];
+            return [period.key, {
+              label: period.label,
+              path: `rolling-attackers/${period.key}.json`,
+              startDate: report.startDate,
+              endDate: report.endDate
+            }];
+          }))
+        }
+      },
       monthlyAttackers: {
         latest: monthlyAttackers.id,
         path: `monthly-attackers/${monthlyAttackers.id}.json`
@@ -248,5 +399,13 @@ export async function generateReports(historyIndex = null) {
     })}\n`, 'utf8')
   ]);
 
-  return { monthlyAttackers, dailyLosses, lossReports };
+  return {
+    monthlyAttackers,
+    weeklyAttackers,
+    monthReports,
+    weekReports,
+    attackerRollingReports,
+    dailyLosses,
+    lossReports
+  };
 }

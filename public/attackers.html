@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Топ атакеров месяца — OGame RU</title>
+    <title>Топ атакеры — OGame RU</title>
     <script>
       (() => {
         const storageKey = 'ogame-ru-theme';
@@ -15,13 +15,13 @@
         document.documentElement.dataset.theme = theme;
       })();
     </script>
-    <link rel="stylesheet" href="styles.css?v=20261103-reports">
+    <link rel="stylesheet" href="styles.css?v=20261103-attacker-periods">
   </head>
-  <body data-report="monthlyAttackers">
+  <body data-report="attackers">
     <main class="shell reportShell">
       <header class="topbar">
         <div>
-          <h1 id="reportTitle">Топ атакеров месяца</h1>
+          <h1 id="reportTitle">Топ атакеры</h1>
           <p id="metaLine">Загрузка данных...</p>
         </div>
         <button id="themeToggle" class="themeToggle" type="button" aria-pressed="false">
@@ -31,7 +31,7 @@
       </header>
       <nav class="siteNav" aria-label="Разделы сайта">
         <a href="index.html">Статистика</a>
-        <a href="attackers.html" aria-current="page">Атакеры месяца</a>
+        <a href="attackers.html" aria-current="page">Топ атакеры</a>
         <a href="losses.html">Потери за сутки</a>
       </nav>
       <section class="reportToolbar" aria-label="Фильтры отчёта">
@@ -39,6 +39,15 @@
           <span>Вселенная</span>
           <select id="universeFilter"></select>
         </label>
+        <div class="attackerPeriodControl">
+          <span>Период</span>
+          <div id="attackerPeriodToggle" class="segmentedControl attackerSegmentedControl" aria-label="Период рейтинга атакеров">
+            <select id="attackerMonthSelect" aria-label="Выбрать месяц"></select>
+            <select id="attackerWeekSelect" aria-label="Выбрать календарную неделю"></select>
+            <button type="button" data-attacker-period="7d" aria-pressed="false">7 дней</button>
+            <button type="button" data-attacker-period="30d" aria-pressed="false">30 дней</button>
+          </div>
+        </div>
         <p id="reportLimitHint" class="reportLimitHint">Все вселенные — топ-30 · одна вселенная — топ-10</p>
       </section>
       <section class="status" id="statusBox" hidden></section>
@@ -55,6 +64,6 @@
         </table>
       </section>
     </main>
-    <script src="report-app.js?v=20261103-loss-periods" type="module"></script>
+    <script src="report-app.js?v=20261103-attacker-periods" type="module"></script>
   </body>
 </html>
