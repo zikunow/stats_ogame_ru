@@ -109,6 +109,39 @@ for (const militaryRow of latestStats['3']) {
 }
 
 const reportsIndex = JSON.parse(await readFile(resolve(REPORTS_DIR, 'index.json'), 'utf8'));
+const hallDescriptor = reportsIndex.attackerHallOfFame;
+if (!hallDescriptor?.path) throw new Error('Missing attacker hall of fame');
+const attackerHallOfFame = JSON.parse(
+  await readFile(resolve(REPORTS_DIR, hallDescriptor.path), 'utf8')
+);
+if (
+  !Array.isArray(attackerHallOfFame.months)
+  || !Array.isArray(attackerHallOfFame.weeks)
+  || !Array.isArray(attackerHallOfFame.universes)
+  || !Array.isArray(attackerHallOfFame.scopes?.universe)
+  || !Array.isArray(attackerHallOfFame.scopes?.global)
+) {
+  throw new Error('Invalid attacker hall of fame');
+}
+for (const scope of ['universe', 'global']) {
+  const rows = attackerHallOfFame.scopes[scope];
+  const keys = new Set();
+  for (const row of rows) {
+    const key = `${row.universeId}:${row.playerId}`;
+    if (keys.has(key)) throw new Error(`Duplicate hall of fame row ${scope}/${key}`);
+    keys.add(key);
+    for (const category of ['week', 'month']) {
+      const medals = row[category];
+      if (
+        !['gold', 'silver', 'bronze', 'podiums', 'destroyed']
+          .every((field) => Number.isFinite(medals?.[field]) && medals[field] >= 0)
+        || medals.podiums !== medals.gold + medals.silver + medals.bronze
+      ) {
+        throw new Error(`Invalid hall of fame medals ${scope}/${key}/${category}`);
+      }
+    }
+  }
+}
 const attackerPeriods = reportsIndex.attackers?.periods;
 if (
   reportsIndex.attackers?.defaultPeriod !== 'month'
@@ -169,4 +202,5 @@ console.log(`Snapshots: ${index.snapshots.length}`);
 console.log(`Latest: ${index.latest}`);
 console.log(`Universes: ${latestMeta.universes.length}`);
 console.log(`Reports: ${attackerPeriods.month.latest}, ${attackerPeriods.week.latest}, ${reportsIndex.dailyLosses.latest}`);
+console.log(`Hall of fame: ${attackerHallOfFame.scopes.universe.length}/${attackerHallOfFame.scopes.global.length}`);
 console.log('Data checks passed');

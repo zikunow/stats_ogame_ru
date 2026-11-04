@@ -1,12 +1,13 @@
 import { generateReports } from '../src/reports.js';
 
 generateReports()
-  .then(({ monthReports, weekReports, attackerRollingReports, lossReports }) => {
+  .then(({ monthReports, weekReports, attackerRollingReports, attackerHallOfFame, lossReports }) => {
     console.log(`Attacker months: ${monthReports.map((report) => report.id).join(', ')}`);
     console.log(`Attacker weeks: ${weekReports.map((report) => report.id).join(', ')}`);
     for (const [period, report] of Object.entries(attackerRollingReports)) {
       console.log(`Attackers ${period}: ${report.startDate}..${report.endDate} (${report.rows.length} rows)`);
     }
+    console.log(`Attacker hall of fame: ${attackerHallOfFame.scopes.universe.length} universe rows, ${attackerHallOfFame.scopes.global.length} global rows`);
     for (const [period, report] of Object.entries(lossReports)) {
       console.log(`Losses ${period}: ${report.startDate}..${report.endDate} (${report.rows.length} rows)`);
     }

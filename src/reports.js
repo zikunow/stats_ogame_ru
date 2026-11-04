@@ -239,6 +239,86 @@ async function buildReport({
   };
 }
 
+function emptyMedals() {
+  return { gold: 0, silver: 0, bronze: 0, podiums: 0, destroyed: 0 };
+}
+
+function addHallAward(rows, player, category, medal, endDate) {
+  const key = `${player.universeId}:${player.playerId}`;
+  let row = rows.get(key);
+  if (!row) {
+    row = {
+      universeId: player.universeId,
+      universeName: player.universeName,
+      playerId: player.playerId,
+      name: player.name,
+      displayName: player.displayName,
+      allianceTag: player.allianceTag,
+      week: emptyMedals(),
+      month: emptyMedals(),
+      latestAwardEndDate: endDate
+    };
+    rows.set(key, row);
+  }
+
+  row.universeName = player.universeName;
+  row.name = player.name;
+  row.displayName = player.displayName;
+  row.allianceTag = player.allianceTag;
+  row.latestAwardEndDate = endDate;
+  row[category][medal] += 1;
+  row[category].podiums += 1;
+  row[category].destroyed += player.periodScore;
+}
+
+function buildAttackerHallOfFame(monthReports, weekReports) {
+  const universeRows = new Map();
+  const globalRows = new Map();
+  const medals = ['gold', 'silver', 'bronze'];
+  const events = [
+    ...monthReports.map((report) => ({ category: 'month', report })),
+    ...weekReports.map((report) => ({ category: 'week', report }))
+  ].sort((a, b) => a.report.endDate.localeCompare(b.report.endDate));
+
+  for (const { category, report } of events) {
+    report.rows.slice(0, 3).forEach((row, index) => {
+      addHallAward(globalRows, row, category, medals[index], report.endDate);
+    });
+
+    const byUniverse = new Map();
+    for (const row of report.rows) {
+      if (!byUniverse.has(row.universeId)) byUniverse.set(row.universeId, []);
+      byUniverse.get(row.universeId).push(row);
+    }
+    for (const rows of byUniverse.values()) {
+      rows.slice(0, 3).forEach((row, index) => {
+        addHallAward(universeRows, row, category, medals[index], report.endDate);
+      });
+    }
+  }
+
+  const latestReport = [...monthReports, ...weekReports]
+    .sort((a, b) => b.endDate.localeCompare(a.endDate))[0];
+  return {
+    generatedAt: latestReport.endGeneratedAt,
+    months: monthReports.map((report) => ({
+      id: report.id,
+      startDate: report.startDate,
+      endDate: report.endDate
+    })),
+    weeks: weekReports.map((report) => ({
+      id: report.id,
+      startDate: report.startDate,
+      endDate: report.endDate
+    })),
+    universes: latestReport.universes,
+    scopes: {
+      universe: [...universeRows.values()],
+      global: [...globalRows.values()]
+    }
+  };
+}
+
 export async function generateReports(historyIndex = null) {
   const index = historyIndex || await readHistoryIndex();
   const snapshots = [...(index.snapshots || [])].sort();
@@ -330,6 +410,7 @@ export async function generateReports(historyIndex = null) {
   ]);
   const monthlyAttackers = monthReports[0];
   const weeklyAttackers = weekReports[0];
+  const attackerHallOfFame = buildAttackerHallOfFame(monthReports, weekReports);
   const dailyLosses = lossReports['1d'];
 
   await Promise.all([
@@ -369,7 +450,16 @@ export async function generateReports(historyIndex = null) {
     ...weekReportFiles,
     ...attackerRollingReportFiles,
     ...lossReportFiles,
+    writeFile(
+      resolve(REPORTS_DIR, 'attacker-hall-of-fame.json'),
+      `${JSON.stringify(attackerHallOfFame)}\n`,
+      'utf8'
+    ),
     writeFile(resolve(REPORTS_DIR, 'index.json'), `${JSON.stringify({
+      attackerHallOfFame: {
+        path: 'attacker-hall-of-fame.json',
+        generatedAt: attackerHallOfFame.generatedAt
+      },
       attackers: {
         defaultPeriod: 'month',
         periods: {
@@ -434,6 +524,7 @@ export async function generateReports(historyIndex = null) {
     monthReports,
     weekReports,
     attackerRollingReports,
+    attackerHallOfFame,
     dailyLosses,
     lossReports
   };

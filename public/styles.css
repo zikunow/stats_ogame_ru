@@ -283,6 +283,84 @@ select {
   font-variant-numeric: tabular-nums;
 }
 
+.hallToolbar {
+  display: grid;
+  grid-template-columns: auto auto minmax(210px, 260px);
+  gap: 12px 16px;
+  align-items: end;
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  padding: 14px;
+}
+
+.hallControl > span,
+.hallUniverseControl > span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.hallSegmentedControl button {
+  min-width: 112px;
+}
+
+.hallSegmentedControl button.active {
+  border-color: var(--accent);
+}
+
+.hallUniverseControl {
+  width: 100%;
+}
+
+.hallUniverseControl[hidden] {
+  display: none;
+}
+
+.hallHint {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--line);
+  padding: 10px 2px 0;
+  font-size: 12px;
+}
+
+.hallTableWrap {
+  max-height: calc(100vh - 270px);
+}
+
+.hallTable {
+  min-width: 900px;
+}
+
+.hallTable .medalHeader,
+.hallTable .medalCount {
+  width: 72px;
+  font-weight: 800;
+}
+
+.hallTable .medalHeader {
+  font-size: 19px;
+}
+
+.hallTable .medalCount.gold {
+  color: #d6a91f;
+}
+
+.hallTable .medalCount.silver {
+  color: #9aa7b7;
+}
+
+.hallTable .medalCount.bronze {
+  color: #bd7540;
+}
+
+.hallTable .podiumCount {
+  color: var(--accent-strong);
+  font-weight: 800;
+}
+
 h1 {
   margin: 0 0 5px;
   font-size: clamp(24px, 3vw, 38px);
@@ -435,6 +513,14 @@ p {
   }
 
   .attackerToolbar label {
+    width: min(320px, 100%);
+  }
+
+  .hallToolbar {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .hallUniverseControl {
     width: min(320px, 100%);
   }
 }
@@ -888,6 +974,30 @@ tbody tr:hover {
 
   .attackerSegmentedControl button {
     width: 100%;
+  }
+
+  .hallToolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .hallSegmentedControl {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .hallSegmentedControl button {
+    width: 100%;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .hallSegmentedControl button:last-child {
+    border-bottom: 0;
+  }
+
+  .hallTableWrap {
+    max-height: calc(100vh - 430px);
   }
 
   .reportLimitHint {
