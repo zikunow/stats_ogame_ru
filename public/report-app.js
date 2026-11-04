@@ -174,12 +174,12 @@ function renderHeading() {
   } else {
     const periodLabels = LOSS_PERIOD_LABELS[state.lossPeriod];
     elements.title.textContent = periodLabels.title;
-    elements.periodHeaderLabel.textContent = 'Military Lost';
+    elements.periodHeaderLabel.textContent = 'Потеряно';
     elements.totalHeaderLabel.textContent = 'Потеряно всего';
     elements.fleetHeader.hidden = false;
     elements.defenseHeader.hidden = false;
     elements.destroyedHeader.hidden = false;
-    elements.reportLimitHint.textContent = 'Все вселенные — топ-30 · одна вселенная — топ-10 · Military destroyed = 0 может указывать на небоевое списание';
+    elements.reportLimitHint.textContent = 'Все вселенные — топ-30 · одна вселенная — топ-10 · флот и оборона показывают чистое изменение · «Уничтожены» = 0 может означать небоевое списание';
   }
 
   const selectedPeriod = isAttackers ? getAttackerPeriodLabel() : '';
