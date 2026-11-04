@@ -154,9 +154,13 @@ for (const [reportType, reportDescriptors] of [
     }
     if (
       reportType === 'dailyLosses'
-      && report.rows.some((row) => !Number.isFinite(row.periodDestroyedScore))
+      && report.rows.some((row) => (
+        !Number.isFinite(row.periodDestroyedScore)
+        || !Number.isFinite(row.periodFleetScore)
+        || !Number.isFinite(row.periodDefenseScore)
+      ))
     ) {
-      throw new Error('Missing Military Destroyed value in daily losses');
+      throw new Error('Missing loss breakdown value in daily losses');
     }
   }
 }

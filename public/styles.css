@@ -272,9 +272,14 @@ select {
   font-variant-numeric: tabular-nums;
 }
 
-.reportDestroyed {
-  color: var(--score-military);
+.reportLoss,
+.reportNetChange.negative {
+  color: var(--danger);
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.reportNetChange {
   font-variant-numeric: tabular-nums;
 }
 

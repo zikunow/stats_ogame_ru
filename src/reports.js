@@ -178,23 +178,48 @@ async function buildReport({
   statType,
   comparisonStatType = '',
   comparisonField = '',
+  periodFields = {},
   excludeWhenComparisonGreater = false,
   startDate,
   endDate,
   labelDate
 }) {
-  const statTypes = [...new Set([statType, comparisonStatType].filter(Boolean))];
+  const statTypes = [...new Set([
+    statType,
+    comparisonStatType,
+    ...Object.values(periodFields)
+  ].filter(Boolean))];
   const [startStats, endStats, startMeta, endMeta] = await Promise.all([
     readSnapshotStats(startDate, statTypes),
     readSnapshotStats(endDate, statTypes),
     readSnapshotMeta(startDate),
     readSnapshotMeta(endDate)
   ]);
-  const { rows, excludedRows } = buildRows(startStats[statType], endStats[statType], {
+  const { rows: baseRows, excludedRows } = buildRows(startStats[statType], endStats[statType], {
     comparisonStartRows: comparisonStatType ? startStats[comparisonStatType] : null,
     comparisonEndRows: comparisonStatType ? endStats[comparisonStatType] : null,
     comparisonField,
     excludeWhenComparisonGreater
+  });
+  const periodScoreMaps = Object.fromEntries(Object.entries(periodFields).map(([field, type]) => [
+    field,
+    {
+      start: new Map(startStats[type].map((row) => [`${row.universeId}:${row.playerId}`, row.score])),
+      end: new Map(endStats[type].map((row) => [`${row.universeId}:${row.playerId}`, row.score]))
+    }
+  ]));
+  const rows = baseRows.map((row) => {
+    const key = `${row.universeId}:${row.playerId}`;
+    return {
+      ...row,
+      ...Object.fromEntries(Object.entries(periodScoreMaps).map(([field, scores]) => {
+        const startScore = scores.start.get(key);
+        const endScore = scores.end.get(key);
+        return [field, Number.isFinite(startScore) && Number.isFinite(endScore)
+          ? endScore - startScore
+          : null];
+      }))
+    };
   });
 
   return {
@@ -293,6 +318,10 @@ export async function generateReports(historyIndex = null) {
         statType: '4',
         comparisonStatType: '6',
         comparisonField: 'periodDestroyedScore',
+        periodFields: {
+          periodFleetScore: 'fleet',
+          periodDefenseScore: 'defense'
+        },
         startDate: lossPeriodStarts[period.key],
         endDate: latestDate,
         labelDate: lossPeriodStarts[period.key]

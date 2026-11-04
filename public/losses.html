@@ -15,7 +15,7 @@
         document.documentElement.dataset.theme = theme;
       })();
     </script>
-    <link rel="stylesheet" href="styles.css?v=20261103-attacker-layout">
+    <link rel="stylesheet" href="styles.css?v=20261104-loss-breakdown">
   </head>
   <body data-report="dailyLosses">
     <main class="shell reportShell">
@@ -32,7 +32,7 @@
       <nav class="siteNav" aria-label="Разделы сайта">
         <a href="index.html">Статистика</a>
         <a href="attackers.html">Топ атакеры</a>
-        <a href="losses.html" aria-current="page">Потери за сутки</a>
+        <a href="losses.html" aria-current="page">Потери</a>
       </nav>
       <section class="reportToolbar" aria-label="Фильтры отчёта">
         <label>
@@ -55,7 +55,9 @@
           <thead><tr>
             <th class="rank">Место</th><th>Ник</th><th>Альянс</th>
             <th class="sortableHeader"><button id="periodSortButton" type="button"><span id="periodHeaderLabel">За период</span> <span id="periodSortIndicator">↓</span></button></th>
-            <th id="destroyedHeader">Military destroyed</th>
+            <th id="fleetHeader">Флот</th>
+            <th id="defenseHeader">Оборона</th>
+            <th id="destroyedHeader">Military Destroyed</th>
             <th class="sortableHeader"><button id="totalSortButton" type="button"><span id="totalHeaderLabel">Всего</span> <span id="totalSortIndicator"></span></button></th>
             <th>Вселенная</th><th>Эко</th><th>Мирный флот</th><th>Боевой флот</th><th>Лом</th>
           </tr></thead>
@@ -63,6 +65,6 @@
         </table>
       </section>
     </main>
-    <script src="report-app.js?v=20261103-attacker-layout" type="module"></script>
+    <script src="report-app.js?v=20261104-loss-breakdown" type="module"></script>
   </body>
 </html>

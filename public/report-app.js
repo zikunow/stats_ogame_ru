@@ -6,9 +6,9 @@ const MONTH_NAMES = [
   'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'
 ];
 const LOSS_PERIOD_LABELS = {
-  '1d': { title: 'Топ потерь вчерашнего дня', column: 'Потеряно за сутки' },
-  '7d': { title: 'Топ потерь за 7 дней', column: 'Потеряно за 7 дней' },
-  '30d': { title: 'Топ потерь за 30 дней', column: 'Потеряно за 30 дней' }
+  '1d': { title: 'Топ потерь вчерашнего дня' },
+  '7d': { title: 'Топ потерь за 7 дней' },
+  '30d': { title: 'Топ потерь за 30 дней' }
 };
 const ATTACKER_PERIOD_LABELS = {
   month: { column: 'Уничтожено за месяц' },
@@ -42,6 +42,8 @@ const elements = {
   totalSortButton: document.querySelector('#totalSortButton'),
   periodSortIndicator: document.querySelector('#periodSortIndicator'),
   totalSortIndicator: document.querySelector('#totalSortIndicator'),
+  fleetHeader: document.querySelector('#fleetHeader'),
+  defenseHeader: document.querySelector('#defenseHeader'),
   destroyedHeader: document.querySelector('#destroyedHeader'),
   statusBox: document.querySelector('#statusBox'),
   reportLimitHint: document.querySelector('#reportLimitHint'),
@@ -61,6 +63,13 @@ function formatDateTime(value) {
     dateStyle: 'medium',
     timeStyle: 'short'
   }).format(new Date(value));
+}
+
+function formatSignedNumber(value) {
+  if (!Number.isFinite(value)) return '—';
+  if (value > 0) return `+${formatNumber(value)}`;
+  if (value < 0) return `−${formatNumber(Math.abs(value))}`;
+  return '0';
 }
 
 function formatShortDate(value) {
@@ -158,13 +167,17 @@ function renderHeading() {
     elements.title.textContent = 'Топ атакеры';
     elements.periodHeaderLabel.textContent = ATTACKER_PERIOD_LABELS[state.attackerPeriod].column;
     elements.totalHeaderLabel.textContent = 'Уничтожено всего';
+    elements.fleetHeader.hidden = true;
+    elements.defenseHeader.hidden = true;
     elements.destroyedHeader.hidden = true;
     elements.reportLimitHint.textContent = 'Все вселенные — топ-30 · одна вселенная — топ-10 · уничтожено не меньше, чем потеряно';
   } else {
     const periodLabels = LOSS_PERIOD_LABELS[state.lossPeriod];
     elements.title.textContent = periodLabels.title;
-    elements.periodHeaderLabel.textContent = periodLabels.column;
+    elements.periodHeaderLabel.textContent = 'Military Lost';
     elements.totalHeaderLabel.textContent = 'Потеряно всего';
+    elements.fleetHeader.hidden = false;
+    elements.defenseHeader.hidden = false;
     elements.destroyedHeader.hidden = false;
     elements.reportLimitHint.textContent = 'Все вселенные — топ-30 · одна вселенная — топ-10 · Military destroyed = 0 может указывать на небоевое списание';
   }
@@ -271,14 +284,27 @@ function renderTable() {
     const tr = document.createElement('tr');
     const destroyedCell = createCell(
       Number.isFinite(row.periodDestroyedScore) ? formatNumber(row.periodDestroyedScore) : '—',
-      row.periodDestroyedScore > 0 ? 'reportDestroyed' : 'muted'
+      Number.isFinite(row.periodDestroyedScore) ? '' : 'muted'
     );
-    destroyedCell.hidden = state.type === 'attackers';
+    const fleetCell = createCell(
+      formatSignedNumber(row.periodFleetScore),
+      row.periodFleetScore < 0 ? 'reportNetChange negative' : 'reportNetChange'
+    );
+    const defenseCell = createCell(
+      formatSignedNumber(row.periodDefenseScore),
+      row.periodDefenseScore < 0 ? 'reportNetChange negative' : 'reportNetChange'
+    );
+    const isAttackers = state.type === 'attackers';
+    fleetCell.hidden = isAttackers;
+    defenseCell.hidden = isAttackers;
+    destroyedCell.hidden = isAttackers;
     tr.append(
       createCell(String(index + 1), 'rank'),
       createCell(row.displayName),
       createCell(row.allianceTag || '—', row.allianceTag ? '' : 'muted'),
-      createCell(formatNumber(row.periodScore), 'reportScore'),
+      createCell(formatNumber(row.periodScore), isAttackers ? 'reportScore' : 'reportLoss'),
+      fleetCell,
+      defenseCell,
       destroyedCell,
       createCell(formatNumber(row.totalScore)),
       createCell(row.universeName),
