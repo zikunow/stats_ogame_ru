@@ -36,7 +36,7 @@ function toPercent(score, total) {
 }
 
 export function addScoreBreakdowns(stats) {
-  const requiredTypes = ['0', '1', '2', '3', '8', '9', '10', 'fleet', 'defense'];
+  const requiredTypes = ['0', '2', '8', '9', '10', 'fleet', 'defense'];
   if (requiredTypes.some((type) => !Array.isArray(stats[type]))) return stats;
 
   const scoresByType = Object.fromEntries(requiredTypes.slice(1).map((type) => [
@@ -46,28 +46,23 @@ export function addScoreBreakdowns(stats) {
   stats['0'] = stats['0'].map((row) => {
     const key = `${row.universeId}:${row.playerId}`;
     const total = row.score;
-    const economyTotal = scoresByType['1'].get(key);
-    const research = scoresByType['2'].get(key);
-    const officialMilitary = scoresByType['3'].get(key);
-    const lifeforms = scoresByType['8'].get(key);
-    const lifeformBuildings = scoresByType['9'].get(key);
-    const lifeformTechnologies = scoresByType['10'].get(key);
-    const fleet = scoresByType.fleet.get(key);
-    const defense = scoresByType.defense.get(key);
-
-    if ([
-      total,
-      economyTotal,
-      research,
-      officialMilitary,
-      lifeforms,
-      lifeformBuildings,
-      lifeformTechnologies,
-      fleet,
-      defense
-    ].some((score) => !Number.isFinite(score))) {
+    if (!Number.isFinite(total)) {
       return { ...row, scoreBreakdown: null };
     }
+
+    // OGame omits players with zero points from some category rankings.
+    // Treat a missing category row as zero so new players still receive a
+    // complete breakdown and cannot block the daily snapshot publication.
+    const scoreOrZero = (type) => {
+      const score = scoresByType[type].get(key);
+      return Number.isFinite(score) ? score : 0;
+    };
+    const research = scoreOrZero('2');
+    const lifeforms = scoreOrZero('8');
+    const lifeformBuildings = scoreOrZero('9');
+    const lifeformTechnologies = scoreOrZero('10');
+    const fleet = scoreOrZero('fleet');
+    const defense = scoreOrZero('defense');
 
     // Official category totals occasionally differ by one point because of rounding.
     // Use the exact remainder so the four displayed segments always equal total score.
