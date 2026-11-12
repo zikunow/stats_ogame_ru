@@ -21,6 +21,15 @@ function validateScoreBreakdowns(rows, snapshotDate, requireAll) {
       + breakdown.military.score
       + breakdown.lifeforms.score;
     if (breakdownTotal !== row.score) {
+      // During universe merges OGame can update the total and category
+      // highscore endpoints non-atomically. Preserve that historical response,
+      // but do not let a zero-total transitional row block the whole snapshot.
+      const hasTransitionalZeroTotal = row.score === 0
+        && breakdown.economy.percent === 0
+        && breakdown.research.percent === 0
+        && breakdown.military.percent === 0
+        && breakdown.lifeforms.percent === 0;
+      if (hasTransitionalZeroTotal) continue;
       throw new Error(`Invalid score breakdown total for ${snapshotDate}/${key}`);
     }
     if (breakdown.military.fleet + breakdown.military.defense !== breakdown.military.score) {
