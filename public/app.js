@@ -18,11 +18,14 @@ const state = {
   customRange: null,
   periodComparison: null,
   historyIndex: null,
+  mergeConfig: null,
   snapshotDate: '',
   universeSelectionInitialized: false
 };
 
 const HISTORY_INDEX_URL = new URL('data/history/index.json', window.location.href);
+const MERGE_CONFIG_URL = new URL('merge-events.json', window.location.href);
+const PAGE_MODE = document.body.dataset.universeScope === 'archive' ? 'archive' : 'active';
 const statCache = new Map();
 const comparisonCache = new Map();
 const TAB_ORDER = ['0', '1', '2', 'fleet', 'ships', 'defense', '3', '4', '5', '6', '7', '8', '9', '10', '11'];
@@ -59,7 +62,9 @@ const STAT_GROUPS = [
 ];
 const COLUMN_STORAGE_KEY = 'ogame-ru-visible-columns-v3';
 const THEME_STORAGE_KEY = 'ogame-ru-theme';
-const UNIVERSE_STORAGE_KEY = 'ogame-ru-universe-v1';
+const UNIVERSE_STORAGE_KEY = PAGE_MODE === 'archive'
+  ? 'ogame-ru-archive-universe-v1'
+  : 'ogame-ru-universe-v1';
 const TABLE_COLUMNS = [
   { key: 'rank', label: 'Место' },
   { key: 'displayName', label: 'Ник' },
@@ -230,6 +235,7 @@ function initializeUniverseSelection() {
 }
 
 async function loadData(historyDate = state.historyDate) {
+  await loadMergeConfig();
   await loadHistoryIndex();
   const snapshotDate = historyDate === 'latest' ? state.historyIndex.latest : historyDate;
   if (!snapshotDate) throw new Error('Нет доступных снимков данных');
@@ -242,7 +248,11 @@ async function loadData(historyDate = state.historyDate) {
 
   state.historyDate = historyDate;
   state.snapshotDate = snapshotDate;
-  state.data = { ...payload, stats: {} };
+  state.data = {
+    ...payload,
+    universes: getScopedUniverses(payload.universes || []),
+    stats: {}
+  };
   state.periodComparison = null;
   initializeUniverseSelection();
   await loadStatData(state.activeType);
@@ -258,9 +268,64 @@ async function loadHistoryIndex() {
     const response = await fetch(HISTORY_INDEX_URL, { cache: 'no-cache' });
     if (!response.ok) throw new Error('Не удалось загрузить список снимков');
     state.historyIndex = await response.json();
+    if (PAGE_MODE === 'archive') {
+      const cutoff = getMergeEvent()?.archiveCutoff || state.historyIndex.latest;
+      const snapshots = (state.historyIndex.snapshots || []).filter((date) => date <= cutoff);
+      state.historyIndex = {
+        ...state.historyIndex,
+        latest: [...snapshots].sort().at(-1) || '',
+        snapshots
+      };
+    }
   } catch {
     state.historyIndex = { latest: '', snapshots: [] };
   }
+}
+
+async function loadMergeConfig() {
+  if (state.mergeConfig) return;
+
+  try {
+    const response = await fetch(MERGE_CONFIG_URL, { cache: 'no-cache' });
+    if (!response.ok) throw new Error('Не удалось загрузить сведения о слиянии');
+    state.mergeConfig = await response.json();
+  } catch {
+    state.mergeConfig = { events: [] };
+  }
+}
+
+function getMergeEvent() {
+  return state.mergeConfig?.events?.[0] || null;
+}
+
+function getUniverseIdSet(kind) {
+  return new Set((getMergeEvent()?.[kind] || []).map((universe) => String(universe.id)));
+}
+
+function isUniverseInScope(universeId) {
+  const isSource = getUniverseIdSet('sourceUniverses').has(String(universeId));
+  return PAGE_MODE === 'archive' ? isSource : !isSource;
+}
+
+function getScopedUniverses(universes) {
+  return universes.filter((universe) => isUniverseInScope(universe.id));
+}
+
+function getPostMergeBaseline(universeId) {
+  if (PAGE_MODE !== 'active') return '';
+  const event = getMergeEvent();
+  const isTarget = getUniverseIdSet('targetUniverses').has(String(universeId));
+  if (!event || !isTarget) return '';
+
+  return [...(state.historyIndex?.snapshots || [])]
+    .filter((date) => date > event.hardMergeDate)
+    .sort()[0] || '';
+}
+
+function getUniversePeriodStart(universeId) {
+  const firstSnapshot = getUniverseFirstSnapshot(universeId);
+  const baseline = getPostMergeBaseline(universeId);
+  return baseline && baseline <= state.snapshotDate ? baseline : firstSnapshot;
 }
 
 async function loadStatData(type) {
@@ -298,11 +363,10 @@ async function loadPeriodComparison(type = state.activeType) {
     return;
   }
 
-  const firstSnapshots = state.historyIndex?.universeFirstSnapshots || {};
   const universeDates = Object.fromEntries(state.data.universes.map((universe) => {
-    const firstSnapshot = firstSnapshots[universe.id] || getUniverseFirstSnapshot(universe.id);
-    const actualComparisonDate = period === 'all' || firstSnapshot > comparisonDate
-      ? firstSnapshot
+    const periodStart = getUniversePeriodStart(universe.id);
+    const actualComparisonDate = period === 'all' || periodStart > comparisonDate
+      ? periodStart
       : comparisonDate;
     return [universe.id, actualComparisonDate];
   }));
@@ -359,7 +423,7 @@ function renderStaticControls() {
     .join('');
 
   const universeOptions = [
-    '<option value="all">Все вселенные</option>',
+    `<option value="all">${PAGE_MODE === 'archive' ? 'Все архивные вселенные' : 'Все вселенные'}</option>`,
     ...state.data.universes.map((universe) => {
       const label = universe.status === 'ok'
         ? `${universe.name} (${universe.serverId})`
@@ -494,9 +558,9 @@ function getDeltaPeriodOptions(snapshotDate = state.snapshotDate) {
 
 function getFixedPeriodOptionLabel(label, comparisonDate) {
   if (state.universe === 'all') return label;
-  const firstSnapshot = getUniverseFirstSnapshot(state.universe);
-  return firstSnapshot > comparisonDate
-    ? `${label} (с ${formatHistoryDate(firstSnapshot)})`
+  const periodStart = getUniversePeriodStart(state.universe);
+  return periodStart > comparisonDate
+    ? `${label} (с ${formatHistoryDate(periodStart)})`
     : label;
 }
 
@@ -511,9 +575,9 @@ function getUniverseFirstSnapshot(universeId) {
 
 function getAllTimeOptionLabel() {
   if (state.universe === 'all') return 'Весь доступный период';
-  const firstSnapshot = getUniverseFirstSnapshot(state.universe);
-  return firstSnapshot
-    ? `Весь период (с ${formatShortHistoryDate(firstSnapshot)})`
+  const periodStart = getUniversePeriodStart(state.universe);
+  return periodStart
+    ? `Весь период (с ${formatShortHistoryDate(periodStart)})`
     : 'Весь доступный период';
 }
 
@@ -525,7 +589,7 @@ function getEffectiveDeltaPeriod() {
 function getPeriodComparisonDate(period = getEffectiveDeltaPeriod()) {
   if (period === '1d') return state.data.comparisonDate || '';
   if (period === 'custom') return state.customRange?.from || '';
-  if (period === 'all') return getUniverseFirstSnapshot(state.universe);
+  if (period === 'all') return getUniversePeriodStart(state.universe);
 
   const days = Number.parseInt(period, 10);
   return findSnapshotAtOrBefore(subtractDays(state.snapshotDate, days));
@@ -537,8 +601,8 @@ function getDeltaPeriodLabel(period = getEffectiveDeltaPeriod()) {
   }
   if (state.universe !== 'all' && ['7d', '14d', '30d'].includes(period)) {
     const comparisonDate = getPeriodComparisonDate(period);
-    const firstSnapshot = getUniverseFirstSnapshot(state.universe);
-    if (firstSnapshot > comparisonDate) return `С ${formatHistoryDate(firstSnapshot)}`;
+    const periodStart = getUniversePeriodStart(state.universe);
+    if (periodStart > comparisonDate) return `С ${formatHistoryDate(periodStart)}`;
   }
   if (period === '7d') return 'За 7 дней';
   if (period === '14d') return 'За 14 дней';
@@ -570,7 +634,10 @@ function getDeltaComparisonTitle() {
   if (state.universe !== 'all' && comparison.period !== '1d') {
     const date = comparison.comparisonDates?.[state.universe] || comparison.comparisonDate;
     if (comparison.period === 'all' || date > comparison.comparisonDate) {
-      return `Изменение с первого снимка вселенной: ${formatHistoryDate(date)}`;
+      const baseline = getPostMergeBaseline(state.universe);
+      return baseline && date === baseline
+        ? `Изменение с базового снимка после слияния: ${formatHistoryDate(date)}`
+        : `Изменение с первого снимка вселенной: ${formatHistoryDate(date)}`;
     }
   }
 
@@ -579,7 +646,12 @@ function getDeltaComparisonTitle() {
     const range = dates.length > 1
       ? ` (${formatHistoryDate(dates[0])}–${formatHistoryDate(dates.at(-1))})`
       : dates[0] ? ` (${formatHistoryDate(dates[0])})` : '';
-    return `Для каждой вселенной изменение считается с её первого снимка${range}`;
+    const hasPostMergeBaselines = state.data.universes.some((universe) => (
+      comparison.comparisonDates?.[universe.id] === getPostMergeBaseline(universe.id)
+    ));
+    return hasPostMergeBaselines
+      ? `Для целевых вселенных изменение считается после слияния, для остальных — с первого снимка${range}`
+      : `Для каждой вселенной изменение считается с её первого снимка${range}`;
   }
 
   if (comparison.period !== '1d') {
@@ -613,7 +685,7 @@ function renderTimeframeFilter() {
   elements.timeframeFilter.innerHTML = [
     ...customOption,
     ...archiveOption,
-    `<option value="latest:1d">${formatHistoryDate(latestDate)} (актуальная)</option>`,
+    `<option value="latest:1d">${formatHistoryDate(latestDate)} (${PAGE_MODE === 'archive' ? 'последний срез' : 'актуальная'})</option>`,
     ...periodOptions.filter((option) => option.value !== '1d').map((option) => (
       `<option value="latest:${option.value}">${escapeHtml(option.label)}</option>`
     )),
@@ -705,7 +777,8 @@ function escapeHtml(value = '') {
 
 function getVisibleRows() {
   const query = state.query.trim().toLowerCase();
-  let rows = state.data.stats[state.activeType] || [];
+  let rows = (state.data.stats[state.activeType] || [])
+    .filter((row) => isUniverseInScope(row.universeId));
 
   const period = getEffectiveDeltaPeriod();
   const comparison = state.periodComparison;
@@ -727,10 +800,15 @@ function getVisibleRows() {
     });
   } else {
     const hasComparison = Boolean(state.data.comparisonDate);
-    rows = rows.map((row) => ({
-      ...row,
-      scoreDeltaIsNew: hasComparison && !Number.isFinite(row.scoreDelta)
-    }));
+    rows = rows.map((row) => {
+      const isPostMergeBaseline = state.snapshotDate === getPostMergeBaseline(row.universeId);
+      return {
+        ...row,
+        scoreDelta: isPostMergeBaseline ? null : row.scoreDelta,
+        scoreDeltaIsNew: !isPostMergeBaseline && hasComparison && !Number.isFinite(row.scoreDelta),
+        scoreDeltaIsBaseline: isPostMergeBaseline
+      };
+    });
   }
 
   if (state.universe !== 'all') {
@@ -798,7 +876,8 @@ function render() {
 
   normalizeColumnFilters();
   const rows = getVisibleRows();
-  const totalRows = state.data.stats[state.activeType]?.length || 0;
+  const totalRows = (state.data.stats[state.activeType] || [])
+    .filter((row) => isUniverseInScope(row.universeId)).length;
   const okUniverses = state.data.universes.filter((universe) => universe.status === 'ok').length;
   const failedUniverses = state.data.failures?.length || 0;
 
@@ -838,7 +917,7 @@ function render() {
       <td data-column="displayName" class="${row.isVacation ? 'vacation' : ''}">${escapeHtml(row.displayName)}</td>
       <td data-column="allianceTag">${row.allianceTag ? escapeHtml(row.allianceTag) : '<span class="muted">-</span>'}</td>
       <td data-column="score">${formatNumber(row.score)}</td>
-      <td data-column="scoreDelta" class="scoreDelta ${getScoreDeltaClass(row.scoreDelta, row.scoreDeltaIsNew)}">${formatScoreDelta(row.scoreDelta, row.scoreDeltaIsNew)}</td>
+      <td data-column="scoreDelta" class="scoreDelta ${getScoreDeltaClass(row.scoreDelta, row.scoreDeltaIsNew, row.scoreDeltaIsBaseline)}">${formatScoreDelta(row.scoreDelta, row.scoreDeltaIsNew, row.scoreDeltaIsBaseline)}</td>
       <td data-column="scoreBreakdown" class="scoreBreakdownCell">${renderScoreBreakdown(row.scoreBreakdown)}</td>
       <td data-column="universeName">${escapeHtml(row.universeName)}</td>
       <td data-column="position">${formatNumber(row.position)}</td>
@@ -867,7 +946,8 @@ function matchesPlayerStatus(status = '') {
   }
 }
 
-function formatScoreDelta(value, isNew = false) {
+function formatScoreDelta(value, isNew = false, isBaseline = false) {
+  if (isBaseline) return 'База';
   if (isNew) return 'Новый';
   if (!Number.isFinite(value)) return '—';
   if (value > 0) return `+${formatNumber(value)}`;
@@ -875,7 +955,8 @@ function formatScoreDelta(value, isNew = false) {
   return '0';
 }
 
-function getScoreDeltaClass(value, isNew = false) {
+function getScoreDeltaClass(value, isNew = false, isBaseline = false) {
+  if (isBaseline) return 'neutral';
   if (isNew) return 'new';
   if (!Number.isFinite(value) || value === 0) return 'neutral';
   return value > 0 ? 'positive' : 'negative';

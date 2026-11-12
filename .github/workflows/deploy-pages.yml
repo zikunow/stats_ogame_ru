@@ -77,6 +77,8 @@ jobs:
           test -f dist/attackers.html
           test -f dist/hall-of-fame.html
           test -f dist/losses.html
+          test -f dist/archive.html
+          test -f dist/merge-events.json
           test -f dist/styles.css
           test -f dist/data/history/index.json
           test -f dist/data/reports/index.json
@@ -116,8 +118,10 @@ jobs:
           curl -fsSL --retry 6 --retry-delay 10 "${url%/}/attackers.html" -o /tmp/attackers.html
           curl -fsSL --retry 6 --retry-delay 10 "${url%/}/hall-of-fame.html" -o /tmp/hall-of-fame.html
           curl -fsSL --retry 6 --retry-delay 10 "${url%/}/losses.html" -o /tmp/losses.html
+          curl -fsSL --retry 6 --retry-delay 10 "${url%/}/archive.html" -o /tmp/archive.html
           curl -fsSL --retry 6 --retry-delay 10 "${url%/}/data/reports/index.json" -o /tmp/reports-index.json
           grep -q "Топ атакеры" /tmp/attackers.html
           grep -q "Зал славы атакеров" /tmp/hall-of-fame.html
           grep -q "Топ потерь вчерашнего дня" /tmp/losses.html
+          grep -q "Архив вселенных" /tmp/archive.html
           node -e "const fs=require('fs'); const meta=JSON.parse(fs.readFileSync('/tmp/meta.json','utf8')); const rows=JSON.parse(fs.readFileSync('/tmp/score.json','utf8')); const reports=JSON.parse(fs.readFileSync('/tmp/reports-index.json','utf8')); const losses=reports.dailyLosses?.periods; const attackers=reports.attackers?.periods; if (!meta.generatedAt || !meta.highscoreTypes?.length || !Array.isArray(rows) || !rows.every(row => Object.hasOwn(row, 'scoreDelta')) || !reports.attackerHallOfFame?.path || !attackers?.month?.items?.length || !attackers?.week?.items?.length || !['7d','30d'].every(period => attackers?.[period]?.path) || !['1d','7d','30d'].every(period => losses?.[period]?.path)) throw new Error('Invalid deployed data');"

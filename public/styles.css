@@ -127,6 +127,65 @@ select {
   color: var(--accent-strong);
 }
 
+.archiveIntro {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px 28px;
+  margin-bottom: 18px;
+  border: 1px solid var(--warn-line);
+  border-radius: 8px;
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  padding: 16px 18px;
+}
+
+.archiveIntro h2 {
+  margin: 4px 0 6px;
+  color: var(--text);
+  font-size: clamp(20px, 2.3vw, 28px);
+}
+
+.archiveIntro p {
+  margin: 0;
+}
+
+.archiveEyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.archiveMilestones {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(130px, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.archiveMilestones div {
+  border-left: 1px solid var(--warn-line);
+  padding-left: 14px;
+}
+
+.archiveMilestones dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.archiveMilestones dd {
+  margin: 3px 0 0;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.archiveNote {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--warn-line);
+  padding-top: 10px;
+  font-size: 13px;
+}
+
 .reportToolbar {
   display: flex;
   align-items: end;
@@ -947,6 +1006,14 @@ tbody tr:hover {
 
   .toolbar .search {
     grid-column: auto;
+  }
+
+  .archiveIntro {
+    grid-template-columns: 1fr;
+  }
+
+  .archiveMilestones {
+    grid-template-columns: 1fr 1fr;
   }
 
   .reportToolbar,

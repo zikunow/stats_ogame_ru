@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "events": [
+    {
+      "id": "ru-merge-2026-11",
+      "title": "Слияние ноября 2026",
+      "startDate": "2026-11-09",
+      "hardMergeDate": "2026-11-12",
+      "archiveCutoff": "2026-11-12",
+      "sourceUniverses": [
+        { "id": "103", "name": "Capella" },
+        { "id": "178", "name": "Zenith" },
+        { "id": "182", "name": "Dione" },
+        { "id": "188", "name": "Juno" },
+        { "id": "193", "name": "Ozone" },
+        { "id": "199", "name": "Undae" },
+        { "id": "254", "name": "Yin" },
+        { "id": "255", "name": "Zodiac" },
+        { "id": "256", "name": "Aries" },
+        { "id": "257", "name": "Bharani" },
+        { "id": "258", "name": "Ceres" },
+        { "id": "259", "name": "Delphinus" },
+        { "id": "260", "name": "Eris" },
+        { "id": "261", "name": "Fafnir" },
+        { "id": "262", "name": "Grus" },
+        { "id": "263", "name": "Hercules" },
+        { "id": "264", "name": "Imai" }
+      ],
+      "targetUniverses": [
+        { "id": "1", "name": "Universe 1" },
+        { "id": "272", "name": "Quasi-Stellar" },
+        { "id": "273", "name": "Regulus" },
+        { "id": "274", "name": "Scorpius" }
+      ]
+    }
+  ]
+}
