@@ -551,9 +551,28 @@ function getDeltaPeriodOptions(snapshotDate = state.snapshotDate) {
     });
   }
   if ((state.historyIndex?.snapshots || []).some((date) => date < snapshotDate)) {
-    options.push({ value: 'all', label: getAllTimeOptionLabel() });
+    const archiveRange = getArchiveFullRange();
+    if (PAGE_MODE === 'archive' && archiveRange) {
+      options.push({
+        value: 'archive-all',
+        label: `Весь период (${formatShortHistoryDate(archiveRange.from)}–${formatShortHistoryDate(archiveRange.to)})`,
+        range: archiveRange
+      });
+    } else {
+      options.push({ value: 'all', label: getAllTimeOptionLabel() });
+    }
   }
   return options;
+}
+
+function getArchiveFullRange() {
+  if (PAGE_MODE !== 'archive') return null;
+  const snapshots = [...(state.historyIndex?.snapshots || [])].sort();
+  const mergeStart = getMergeEvent()?.startDate;
+  const from = snapshots[0] || '';
+  const to = snapshots.filter((date) => !mergeStart || date <= mergeStart).at(-1) || '';
+  if (!from || !to || from >= to) return null;
+  return { from, to, kind: 'archive-all' };
 }
 
 function getFixedPeriodOptionLabel(label, comparisonDate) {
@@ -597,7 +616,9 @@ function getPeriodComparisonDate(period = getEffectiveDeltaPeriod()) {
 
 function getDeltaPeriodLabel(period = getEffectiveDeltaPeriod()) {
   if (period === 'custom') {
-    return state.customRange?.kind === 'previous-week' ? 'За прошлую неделю' : 'За период';
+    if (state.customRange?.kind === 'previous-week') return 'За прошлую неделю';
+    if (state.customRange?.kind === 'archive-all') return 'За весь период';
+    return 'За период';
   }
   if (state.universe !== 'all' && ['7d', '14d', '30d'].includes(period)) {
     const comparisonDate = getPeriodComparisonDate(period);
@@ -619,7 +640,9 @@ function getDeltaComparisonTitle() {
     const endDate = state.customRange?.to || state.snapshotDate;
     const titlePrefix = state.customRange?.kind === 'previous-week'
       ? 'Изменение за прошлую неделю'
-      : 'Изменение';
+      : state.customRange?.kind === 'archive-all'
+        ? 'Изменение за весь период до начала слияния'
+        : 'Изменение';
     if (state.universe !== 'all') {
       const startDate = comparison.comparisonDates?.[state.universe] || comparison.comparisonDate;
       return `${titlePrefix}: с ${formatHistoryDate(startDate)} по ${formatHistoryDate(endDate)}`;
@@ -673,9 +696,11 @@ function renderTimeframeFilter() {
 
   const customRangeLabel = state.customRange?.kind === 'previous-week'
     ? `Прошлая неделя (${state.customRange.label})`
-    : state.customRange
-      ? `${formatShortHistoryDate(state.customRange.from)}–${formatShortHistoryDate(state.customRange.to)}`
-      : '';
+    : state.customRange?.kind === 'archive-all'
+      ? `Весь период (${formatShortHistoryDate(state.customRange.from)}–${formatShortHistoryDate(state.customRange.to)})`
+      : state.customRange
+        ? `${formatShortHistoryDate(state.customRange.from)}–${formatShortHistoryDate(state.customRange.to)}`
+        : '';
   const customOption = state.customRange
     ? [`<option value="custom:${state.customRange.from}:${state.customRange.to}">${escapeHtml(customRangeLabel)}</option>`]
     : [];
@@ -1193,6 +1218,16 @@ elements.timeframeFilter.addEventListener('change', async (event) => {
       return;
     }
     await applyCustomRange(range, 'Загружаю прошлую неделю...');
+    return;
+  }
+  if (choice === 'latest:archive-all') {
+    const range = getArchiveFullRange();
+    if (!range) {
+      renderTimeframeFilter();
+      setStatus('Недостаточно снимков для всего архивного периода', 'error');
+      return;
+    }
+    await applyCustomRange(range, 'Загружаю весь период до начала слияния...');
     return;
   }
   if (!choice.startsWith('latest:')) return;
