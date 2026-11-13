@@ -1,6 +1,13 @@
 const THEME_STORAGE_KEY = 'ogame-ru-theme';
-const UNIVERSE_STORAGE_KEY = 'ogame-ru-universe-v1';
-const REPORT_INDEX_URL = new URL('data/reports/index.json', window.location.href);
+const IS_ARCHIVE_REPORT = document.body.dataset.reportScope === 'archive';
+const UNIVERSE_STORAGE_KEY = IS_ARCHIVE_REPORT
+  ? 'ogame-ru-archive-universe-v1'
+  : 'ogame-ru-universe-v1';
+const REPORT_INDEX_URL = new URL(
+  document.body.dataset.reportIndex || 'data/reports/index.json',
+  window.location.href
+);
+const REPORTS_BASE_URL = new URL('./', REPORT_INDEX_URL);
 
 const state = {
   hall: null,
@@ -202,7 +209,7 @@ async function loadHall() {
   if (!descriptor?.path) throw new Error('Зал славы пока недоступен');
 
   const hallResponse = await fetch(
-    new URL(`data/reports/${descriptor.path}`, window.location.href),
+    new URL(descriptor.path, REPORTS_BASE_URL),
     { cache: 'no-cache' }
   );
   if (!hallResponse.ok) throw new Error('Не удалось загрузить Зал славы');

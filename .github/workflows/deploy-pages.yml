@@ -78,11 +78,15 @@ jobs:
           test -f dist/hall-of-fame.html
           test -f dist/losses.html
           test -f dist/archive.html
+          test -f dist/archive-attackers.html
+          test -f dist/archive-hall-of-fame.html
+          test -f dist/archive-losses.html
           test -f dist/merge-events.json
           test -f dist/styles.css
           test -f dist/data/history/index.json
           test -f dist/data/reports/index.json
-          node -e "const fs=require('fs'); const index=JSON.parse(fs.readFileSync('dist/data/history/index.json','utf8')); const base='dist/data/history/'+index.latest; const meta=JSON.parse(fs.readFileSync(base+'/meta.json','utf8')); if (!meta.generatedAt || !meta.highscoreTypes?.length) throw new Error('Invalid metadata'); for (const type of meta.highscoreTypes) { const rows=JSON.parse(fs.readFileSync(base+'/stats/'+type.id+'.json','utf8')); if (!Array.isArray(rows)) throw new Error('Invalid '+type.id+' ranking'); } const reports=JSON.parse(fs.readFileSync('dist/data/reports/index.json','utf8')); const attackerPeriods=reports.attackers?.periods; const descriptors=[...(attackerPeriods?.month?.items||[]),...(attackerPeriods?.week?.items||[]),attackerPeriods?.['7d'],attackerPeriods?.['30d'],...Object.values(reports.dailyLosses?.periods||{})]; if (descriptors.some(report=>!report?.path)) throw new Error('Missing report periods'); for (const report of descriptors) { const payload=JSON.parse(fs.readFileSync('dist/data/reports/'+report.path,'utf8')); if (!Array.isArray(payload.rows)) throw new Error('Invalid report '+report.path); } const hall=JSON.parse(fs.readFileSync('dist/data/reports/'+reports.attackerHallOfFame.path,'utf8')); if (!Array.isArray(hall.scopes?.universe)||!Array.isArray(hall.scopes?.global)) throw new Error('Invalid hall of fame');"
+          test -f dist/data/reports/archive/index.json
+          node -e "const fs=require('fs'); const index=JSON.parse(fs.readFileSync('dist/data/history/index.json','utf8')); const base='dist/data/history/'+index.latest; const meta=JSON.parse(fs.readFileSync(base+'/meta.json','utf8')); if (!meta.generatedAt || !meta.highscoreTypes?.length) throw new Error('Invalid metadata'); for (const type of meta.highscoreTypes) { const rows=JSON.parse(fs.readFileSync(base+'/stats/'+type.id+'.json','utf8')); if (!Array.isArray(rows)) throw new Error('Invalid '+type.id+' ranking'); } for (const root of ['dist/data/reports','dist/data/reports/archive']) { const reports=JSON.parse(fs.readFileSync(root+'/index.json','utf8')); const attackerPeriods=reports.attackers?.periods; const descriptors=[...(attackerPeriods?.month?.items||[]),...(attackerPeriods?.week?.items||[]),attackerPeriods?.['7d'],attackerPeriods?.['30d'],...Object.values(reports.dailyLosses?.periods||{})]; if (descriptors.some(report=>!report?.path)) throw new Error('Missing report periods in '+root); for (const report of descriptors) { const payload=JSON.parse(fs.readFileSync(root+'/'+report.path,'utf8')); if (!Array.isArray(payload.rows)) throw new Error('Invalid report '+report.path); } const hall=JSON.parse(fs.readFileSync(root+'/'+reports.attackerHallOfFame.path,'utf8')); if (!Array.isArray(hall.scopes?.universe)||!Array.isArray(hall.scopes?.global)) throw new Error('Invalid hall of fame'); }"
 
       - name: Configure Pages
         uses: actions/configure-pages@v6
@@ -119,9 +123,16 @@ jobs:
           curl -fsSL --retry 6 --retry-delay 10 "${url%/}/hall-of-fame.html" -o /tmp/hall-of-fame.html
           curl -fsSL --retry 6 --retry-delay 10 "${url%/}/losses.html" -o /tmp/losses.html
           curl -fsSL --retry 6 --retry-delay 10 "${url%/}/archive.html" -o /tmp/archive.html
+          curl -fsSL --retry 6 --retry-delay 10 "${url%/}/archive-attackers.html" -o /tmp/archive-attackers.html
+          curl -fsSL --retry 6 --retry-delay 10 "${url%/}/archive-hall-of-fame.html" -o /tmp/archive-hall-of-fame.html
+          curl -fsSL --retry 6 --retry-delay 10 "${url%/}/archive-losses.html" -o /tmp/archive-losses.html
           curl -fsSL --retry 6 --retry-delay 10 "${url%/}/data/reports/index.json" -o /tmp/reports-index.json
+          curl -fsSL --retry 6 --retry-delay 10 "${url%/}/data/reports/archive/index.json" -o /tmp/archive-reports-index.json
           grep -q "Топ атакеры" /tmp/attackers.html
           grep -q "Зал славы атакеров" /tmp/hall-of-fame.html
           grep -q "Топ потерь вчерашнего дня" /tmp/losses.html
-          grep -q "Архив вселенных" /tmp/archive.html
-          node -e "const fs=require('fs'); const meta=JSON.parse(fs.readFileSync('/tmp/meta.json','utf8')); const rows=JSON.parse(fs.readFileSync('/tmp/score.json','utf8')); const reports=JSON.parse(fs.readFileSync('/tmp/reports-index.json','utf8')); const losses=reports.dailyLosses?.periods; const attackers=reports.attackers?.periods; if (!meta.generatedAt || !meta.highscoreTypes?.length || !Array.isArray(rows) || !rows.every(row => Object.hasOwn(row, 'scoreDelta')) || !reports.attackerHallOfFame?.path || !attackers?.month?.items?.length || !attackers?.week?.items?.length || !['7d','30d'].every(period => attackers?.[period]?.path) || !['1d','7d','30d'].every(period => losses?.[period]?.path)) throw new Error('Invalid deployed data');"
+          grep -q "Архив до слияния" /tmp/archive.html
+          grep -q "архив до слияния" /tmp/archive-attackers.html
+          grep -q "архив до слияния" /tmp/archive-hall-of-fame.html
+          grep -q "архив до слияния" /tmp/archive-losses.html
+          node -e "const fs=require('fs'); const meta=JSON.parse(fs.readFileSync('/tmp/meta.json','utf8')); const rows=JSON.parse(fs.readFileSync('/tmp/score.json','utf8')); if (!meta.generatedAt || !meta.highscoreTypes?.length || !Array.isArray(rows) || !rows.every(row => Object.hasOwn(row, 'scoreDelta'))) throw new Error('Invalid deployed data'); for (const file of ['/tmp/reports-index.json','/tmp/archive-reports-index.json']) { const reports=JSON.parse(fs.readFileSync(file,'utf8')); const losses=reports.dailyLosses?.periods; const attackers=reports.attackers?.periods; if (!reports.attackerHallOfFame?.path || !attackers?.month?.items?.length || !attackers?.week?.items?.length || !['7d','30d'].every(period => attackers?.[period]?.path) || !['1d','7d','30d'].every(period => losses?.[period]?.path)) throw new Error('Invalid deployed reports '+file); }"

@@ -1,6 +1,13 @@
 const THEME_STORAGE_KEY = 'ogame-ru-theme';
-const UNIVERSE_STORAGE_KEY = 'ogame-ru-universe-v1';
-const REPORT_INDEX_URL = new URL('data/reports/index.json', window.location.href);
+const IS_ARCHIVE_REPORT = document.body.dataset.reportScope === 'archive';
+const UNIVERSE_STORAGE_KEY = IS_ARCHIVE_REPORT
+  ? 'ogame-ru-archive-universe-v1'
+  : 'ogame-ru-universe-v1';
+const REPORT_INDEX_URL = new URL(
+  document.body.dataset.reportIndex || 'data/reports/index.json',
+  window.location.href
+);
+const REPORTS_BASE_URL = new URL('./', REPORT_INDEX_URL);
 const MONTH_NAMES = [
   'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
   'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'
@@ -77,6 +84,11 @@ function formatShortDate(value) {
     day: '2-digit',
     month: '2-digit'
   }).format(new Date(`${value}T00:00:00Z`));
+}
+
+function formatDate(value) {
+  return new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium' })
+    .format(new Date(`${value}T00:00:00Z`));
 }
 
 function normalizeUniverseSlug(value) {
@@ -164,7 +176,9 @@ function renderUniverseFilter() {
 function renderHeading() {
   const isAttackers = state.type === 'attackers';
   if (isAttackers) {
-    elements.title.textContent = 'Топ атакеры';
+    elements.title.textContent = IS_ARCHIVE_REPORT
+      ? 'Топ атакеры — архив до слияния'
+      : 'Топ атакеры';
     elements.periodHeaderLabel.textContent = ATTACKER_PERIOD_LABELS[state.attackerPeriod].column;
     elements.totalHeaderLabel.textContent = 'Уничтожено всего';
     elements.fleetHeader.hidden = true;
@@ -173,7 +187,9 @@ function renderHeading() {
     elements.reportLimitHint.textContent = 'Все вселенные — топ-30 · одна вселенная — топ-10 · уничтожено не меньше, чем потеряно';
   } else {
     const periodLabels = LOSS_PERIOD_LABELS[state.lossPeriod];
-    elements.title.textContent = periodLabels.title;
+    elements.title.textContent = IS_ARCHIVE_REPORT
+      ? `${periodLabels.title} — архив до слияния`
+      : periodLabels.title;
     elements.periodHeaderLabel.textContent = 'Потеряно';
     elements.totalHeaderLabel.textContent = 'Потеряно всего';
     elements.fleetHeader.hidden = false;
@@ -183,7 +199,13 @@ function renderHeading() {
   }
 
   const selectedPeriod = isAttackers ? getAttackerPeriodLabel() : '';
-  elements.metaLine.textContent = `${selectedPeriod ? `${selectedPeriod} · ` : ''}Период: ${formatDateTime(state.report.startGeneratedAt)} — ${formatDateTime(state.report.endGeneratedAt)}`;
+  const universeStartDate = state.universe === 'all'
+    ? ''
+    : state.report.universeStartDates?.[state.universe];
+  const universeStartNote = universeStartDate && universeStartDate > state.report.startDate
+    ? ` · для выбранной вселенной с ${formatDate(universeStartDate)}`
+    : '';
+  elements.metaLine.textContent = `${selectedPeriod ? `${selectedPeriod} · ` : ''}Период: ${formatDateTime(state.report.startGeneratedAt)} — ${formatDateTime(state.report.endGeneratedAt)}${universeStartNote}`;
   document.title = `${elements.title.textContent} — OGame RU`;
 }
 
@@ -370,7 +392,7 @@ async function loadReport() {
   if (!descriptor?.path) throw new Error('Отчёт пока недоступен');
 
   const reportResponse = await fetch(
-    new URL(`data/reports/${descriptor.path}`, window.location.href),
+    new URL(descriptor.path, REPORTS_BASE_URL),
     { cache: 'no-cache' }
   );
   if (!reportResponse.ok) throw new Error('Не удалось загрузить отчёт');
@@ -389,6 +411,7 @@ elements.themeToggle.addEventListener('click', toggleTheme);
 elements.universeFilter.addEventListener('change', (event) => {
   state.universe = event.target.value;
   syncUniverseSelection();
+  renderHeading();
   renderTable();
 });
 elements.periodSortButton.addEventListener('click', () => setSort('periodScore'));

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Зал славы атакеров — архив до слияния — OGame RU</title>
+    <script>
+      (() => {
+        const storageKey = 'ogame-ru-theme';
+        let theme = '';
+        try { theme = localStorage.getItem(storageKey) || ''; } catch {}
+        if (theme !== 'light' && theme !== 'dark') {
+          theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
+    <link rel="stylesheet" href="styles.css?v=20261113-archive-reports">
+  </head>
+  <body data-report-scope="archive" data-report-index="data/reports/archive/index.json">
+    <main class="shell reportShell hallShell">
+      <header class="topbar">
+        <div><h1>Зал славы атакеров — архив до слияния</h1><p id="metaLine">Загрузка данных...</p></div>
+        <button id="themeToggle" class="themeToggle" type="button" aria-pressed="false">
+          <span id="themeToggleIcon" class="themeToggleIcon" aria-hidden="true">☾</span><span id="themeToggleLabel">Тёмная</span>
+        </button>
+      </header>
+      <nav class="siteNav" aria-label="Разделы архива">
+        <a href="index.html">Актуальная статистика</a>
+        <a href="archive.html">Архив: статистика</a>
+        <a href="archive-hall-of-fame.html" aria-current="page">Зал славы</a>
+        <a href="archive-attackers.html">Топ атакеры</a>
+        <a href="archive-losses.html">Потери</a>
+      </nav>
+      <section class="hallToolbar" aria-label="Фильтры Зала славы">
+        <div class="hallControl"><span>Зачёт</span><div id="scopeToggle" class="segmentedControl hallSegmentedControl">
+          <button type="button" data-scope="universe" aria-pressed="true">В своей вселенной</button>
+          <button type="button" data-scope="global" aria-pressed="false">Среди всех вселенных</button>
+        </div></div>
+        <div class="hallControl"><span>Награды</span><div id="categoryToggle" class="segmentedControl hallSegmentedControl">
+          <button type="button" data-category="all" aria-pressed="true">Все награды</button>
+          <button type="button" data-category="week" aria-pressed="false">Недели</button>
+          <button type="button" data-category="month" aria-pressed="false">Месяцы</button>
+        </div></div>
+        <label id="hallUniverseControl" class="hallUniverseControl"><span>Вселенная</span><select id="universeFilter"></select></label>
+        <p id="hallHint" class="hallHint"></p>
+      </section>
+      <section class="status" id="statusBox" hidden></section>
+      <section class="tableWrap hallTableWrap">
+        <table class="hallTable">
+          <thead><tr>
+            <th class="rank">Место</th><th>Ник</th><th>Альянс</th><th>Вселенная</th>
+            <th class="medalHeader gold" title="Первые места"><span aria-label="Первые места">🥇</span></th>
+            <th class="medalHeader silver" title="Вторые места"><span aria-label="Вторые места">🥈</span></th>
+            <th class="medalHeader bronze" title="Третьи места"><span aria-label="Третьи места">🥉</span></th>
+            <th>Топ-3</th><th id="destroyedHeader">Уничтожено на пьедестале</th>
+          </tr></thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </section>
+    </main>
+    <script src="hall-app.js?v=20261113-archive-reports" type="module"></script>
+  </body>
+</html>

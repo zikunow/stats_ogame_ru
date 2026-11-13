@@ -118,6 +118,10 @@ for (const militaryRow of latestStats['3']) {
 }
 
 const reportsIndex = JSON.parse(await readFile(resolve(REPORTS_DIR, 'index.json'), 'utf8'));
+const mergedSourceUniverseIds = new Set([
+  '103', '178', '182', '188', '193', '199', '254', '255', '256',
+  '257', '258', '259', '260', '261', '262', '263', '264'
+]);
 const hallDescriptor = reportsIndex.attackerHallOfFame;
 if (!hallDescriptor?.path) throw new Error('Missing attacker hall of fame');
 const attackerHallOfFame = JSON.parse(
@@ -131,6 +135,10 @@ if (
   || !Array.isArray(attackerHallOfFame.scopes?.global)
 ) {
   throw new Error('Invalid attacker hall of fame');
+}
+if ([...attackerHallOfFame.scopes.universe, ...attackerHallOfFame.scopes.global]
+  .some((row) => mergedSourceUniverseIds.has(String(row.universeId)))) {
+  throw new Error('Merged source universe leaked into active hall of fame');
 }
 for (const scope of ['universe', 'global']) {
   const rows = attackerHallOfFame.scopes[scope];
@@ -186,6 +194,16 @@ for (const [reportType, reportDescriptors] of [
     if (report.rows.some((row) => !Number.isFinite(row.periodScore) || row.periodScore <= 0)) {
       throw new Error(`Invalid ${reportType} score`);
     }
+    if (report.rows.some((row) => mergedSourceUniverseIds.has(String(row.universeId)))) {
+      throw new Error(`Merged source universe leaked into active ${reportType}`);
+    }
+    if (
+      report.startDate < '2026-11-13'
+      && report.rows.some((row) => String(row.universeId) === '1')
+      && report.universeStartDates?.['1'] !== '2026-11-13'
+    ) {
+      throw new Error(`Universe 1 active ${reportType} was not clamped to 2026-11-13`);
+    }
     if (
       reportType === 'attackers'
       && report.rows.some((row) => (
@@ -207,9 +225,42 @@ for (const [reportType, reportDescriptors] of [
   }
 }
 
+const archiveReportsDir = resolve(REPORTS_DIR, 'archive');
+const archiveReportsIndex = JSON.parse(await readFile(resolve(archiveReportsDir, 'index.json'), 'utf8'));
+const archiveHall = JSON.parse(await readFile(
+  resolve(archiveReportsDir, archiveReportsIndex.attackerHallOfFame.path),
+  'utf8'
+));
+if ([...archiveHall.scopes.universe, ...archiveHall.scopes.global]
+  .some((row) => !mergedSourceUniverseIds.has(String(row.universeId)))) {
+  throw new Error('Active universe leaked into archive hall of fame');
+}
+const archiveAttackerPeriods = archiveReportsIndex.attackers?.periods;
+const archiveLossPeriods = archiveReportsIndex.dailyLosses?.periods;
+const archiveDescriptors = [
+  ...(archiveAttackerPeriods?.month?.items || []),
+  ...(archiveAttackerPeriods?.week?.items || []),
+  archiveAttackerPeriods?.['7d'],
+  archiveAttackerPeriods?.['30d'],
+  ...Object.values(archiveLossPeriods || {})
+];
+if (archiveDescriptors.some((descriptor) => !descriptor?.path)) {
+  throw new Error('Missing archive report period');
+}
+for (const descriptor of archiveDescriptors) {
+  const report = JSON.parse(await readFile(resolve(archiveReportsDir, descriptor.path), 'utf8'));
+  if (
+    report.endDate > '2026-11-09'
+    || report.rows.some((row) => !mergedSourceUniverseIds.has(String(row.universeId)))
+  ) {
+    throw new Error(`Invalid archive scope ${descriptor.path}`);
+  }
+}
+
 console.log(`Snapshots: ${index.snapshots.length}`);
 console.log(`Latest: ${index.latest}`);
 console.log(`Universes: ${latestMeta.universes.length}`);
 console.log(`Reports: ${attackerPeriods.month.latest}, ${attackerPeriods.week.latest}, ${reportsIndex.dailyLosses.latest}`);
 console.log(`Hall of fame: ${attackerHallOfFame.scopes.universe.length}/${attackerHallOfFame.scopes.global.length}`);
+console.log(`Archive hall of fame: ${archiveHall.scopes.universe.length}/${archiveHall.scopes.global.length}`);
 console.log('Data checks passed');

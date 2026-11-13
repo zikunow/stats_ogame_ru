@@ -7,10 +7,13 @@ import {
 } from './data-storage.js';
 
 export const REPORTS_DIR = resolve(HISTORY_DIR, '..', 'reports');
-const MONTHLY_DIR = resolve(REPORTS_DIR, 'monthly-attackers');
-const WEEKLY_DIR = resolve(REPORTS_DIR, 'weekly-attackers');
-const ROLLING_ATTACKERS_DIR = resolve(REPORTS_DIR, 'rolling-attackers');
-const DAILY_DIR = resolve(REPORTS_DIR, 'daily-losses');
+const ARCHIVE_REPORTS_DIR = resolve(REPORTS_DIR, 'archive');
+const MERGE_ARCHIVE_DATE = '2026-11-09';
+const ACTIVE_UNIVERSE_START_DATES = { '1': '2026-11-13' };
+const MERGED_SOURCE_UNIVERSE_IDS = new Set([
+  '103', '178', '182', '188', '193', '199', '254', '255', '256',
+  '257', '258', '259', '260', '261', '262', '263', '264'
+]);
 const ATTACKER_ROLLING_PERIODS = [
   { key: '7d', days: 7, label: '7 дней' },
   { key: '30d', days: 30, label: '30 дней' }
@@ -239,6 +242,165 @@ async function buildReport({
   };
 }
 
+function filterReport(report, allowedUniverseIds, universeStartDates = {}) {
+  const allowed = allowedUniverseIds instanceof Set
+    ? allowedUniverseIds
+    : new Set(allowedUniverseIds);
+  return {
+    ...report,
+    universes: report.universes.filter((universe) => allowed.has(String(universe.id))),
+    rows: report.rows.filter((row) => (
+      allowed.has(String(row.universeId))
+      && (!universeStartDates[String(row.universeId)]
+        || report.startDate >= universeStartDates[String(row.universeId)])
+    ))
+  };
+}
+
+async function filterActiveReport(report, allowedUniverseIds, universeStartDates, buildOptions) {
+  const filtered = filterReport(report, allowedUniverseIds, universeStartDates);
+  const effectiveStartDates = {};
+  for (const [universeId, baselineDate] of Object.entries(universeStartDates)) {
+    if (!allowedUniverseIds.has(universeId) || report.endDate <= baselineDate) continue;
+    effectiveStartDates[universeId] = report.startDate < baselineDate
+      ? baselineDate
+      : report.startDate;
+    if (report.startDate >= baselineDate) continue;
+    const replacement = await buildReport({
+      ...buildOptions,
+      id: report.id,
+      kind: report.kind,
+      startDate: baselineDate,
+      endDate: report.endDate,
+      labelDate: report.labelDate
+    });
+    filtered.rows.push(...replacement.rows.filter((row) => String(row.universeId) === universeId));
+  }
+  filtered.rows.sort((a, b) => (
+    b.periodScore - a.periodScore
+    || b.totalScore - a.totalScore
+    || a.displayName.localeCompare(b.displayName, 'ru')
+  ));
+  return { ...filtered, universeStartDates: effectiveStartDates };
+}
+
+function createReportsIndex({
+  monthReports,
+  weekReports,
+  completeWeeks,
+  attackerRollingReports,
+  lossReports,
+  attackerHallOfFame
+}) {
+  const monthlyAttackers = monthReports[0];
+  const weeklyAttackers = weekReports[0];
+  const dailyLosses = lossReports['1d'];
+  return {
+    attackerHallOfFame: {
+      path: 'attacker-hall-of-fame.json',
+      generatedAt: attackerHallOfFame.generatedAt
+    },
+    attackers: {
+      defaultPeriod: 'month',
+      periods: {
+        month: {
+          latest: monthlyAttackers.id,
+          items: monthReports.map((report) => ({
+            id: report.id,
+            path: `monthly-attackers/${report.id}.json`,
+            startDate: report.startDate,
+            endDate: report.endDate
+          }))
+        },
+        week: {
+          latest: weeklyAttackers.id,
+          items: weekReports.map((report) => {
+            const week = completeWeeks.find((item) => item.id === report.id);
+            return {
+              id: report.id,
+              path: `weekly-attackers/${report.id}.json`,
+              startDate: report.startDate,
+              endDate: report.endDate,
+              isoYear: week.isoYear,
+              week: week.week
+            };
+          })
+        },
+        ...Object.fromEntries(ATTACKER_ROLLING_PERIODS.map((period) => {
+          const report = attackerRollingReports[period.key];
+          return [period.key, {
+            label: period.label,
+            path: `rolling-attackers/${period.key}.json`,
+            startDate: report.startDate,
+            endDate: report.endDate
+          }];
+        }))
+      }
+    },
+    monthlyAttackers: {
+      latest: monthlyAttackers.id,
+      path: `monthly-attackers/${monthlyAttackers.id}.json`
+    },
+    dailyLosses: {
+      latest: dailyLosses.id,
+      path: `daily-losses/${dailyLosses.id}.json`,
+      defaultPeriod: '1d',
+      periods: Object.fromEntries(LOSS_PERIODS.map((period) => {
+        const report = lossReports[period.key];
+        return [period.key, {
+          label: period.label,
+          path: `daily-losses/${report.id}.json`,
+          startDate: report.startDate,
+          endDate: report.endDate
+        }];
+      }))
+    }
+  };
+}
+
+async function writeReportSet({
+  reportsDir,
+  monthReports,
+  weekReports,
+  completeWeeks,
+  attackerRollingReports,
+  lossReports,
+  attackerHallOfFame
+}) {
+  const monthlyDir = resolve(reportsDir, 'monthly-attackers');
+  const weeklyDir = resolve(reportsDir, 'weekly-attackers');
+  const rollingDir = resolve(reportsDir, 'rolling-attackers');
+  const dailyDir = resolve(reportsDir, 'daily-losses');
+  await Promise.all([
+    mkdir(monthlyDir, { recursive: true }),
+    mkdir(weeklyDir, { recursive: true }),
+    mkdir(rollingDir, { recursive: true }),
+    mkdir(dailyDir, { recursive: true })
+  ]);
+  await Promise.all([
+    ...monthReports.map((report) => writeFile(resolve(monthlyDir, `${report.id}.json`), `${JSON.stringify(report)}\n`, 'utf8')),
+    ...weekReports.map((report) => writeFile(resolve(weeklyDir, `${report.id}.json`), `${JSON.stringify(report)}\n`, 'utf8')),
+    ...ATTACKER_ROLLING_PERIODS.map((period) => writeFile(
+      resolve(rollingDir, `${period.key}.json`),
+      `${JSON.stringify(attackerRollingReports[period.key])}\n`,
+      'utf8'
+    )),
+    ...LOSS_PERIODS.map((period) => {
+      const report = lossReports[period.key];
+      return writeFile(resolve(dailyDir, `${report.id}.json`), `${JSON.stringify(report)}\n`, 'utf8');
+    }),
+    writeFile(resolve(reportsDir, 'attacker-hall-of-fame.json'), `${JSON.stringify(attackerHallOfFame)}\n`, 'utf8'),
+    writeFile(resolve(reportsDir, 'index.json'), `${JSON.stringify(createReportsIndex({
+      monthReports,
+      weekReports,
+      completeWeeks,
+      attackerRollingReports,
+      lossReports,
+      attackerHallOfFame
+    }))}\n`, 'utf8')
+  ]);
+}
+
 function emptyMedals() {
   return { gold: 0, silver: 0, bronze: 0, podiums: 0, destroyed: 0 };
 }
@@ -362,6 +524,15 @@ export async function generateReports(historyIndex = null) {
     comparisonField: 'periodLostScore',
     excludeWhenComparisonGreater: true
   };
+  const lossOptions = {
+    statType: '4',
+    comparisonStatType: '6',
+    comparisonField: 'periodDestroyedScore',
+    periodFields: {
+      periodFleetScore: 'fleet',
+      periodDefenseScore: 'defense'
+    }
+  };
   const [monthReports, weekReports, attackerRollingReports, lossReports] = await Promise.all([
     Promise.all(completeMonths.map((month) => buildReport({
       ...attackerOptions,
@@ -393,139 +564,145 @@ export async function generateReports(historyIndex = null) {
     Promise.all(LOSS_PERIODS.map(async (period) => [
       period.key,
       await buildReport({
+        ...lossOptions,
         id: `${latestDate}-${period.key}`,
         kind: 'daily-losses',
-        statType: '4',
-        comparisonStatType: '6',
-        comparisonField: 'periodDestroyedScore',
-        periodFields: {
-          periodFleetScore: 'fleet',
-          periodDefenseScore: 'defense'
-        },
         startDate: lossPeriodStarts[period.key],
         endDate: latestDate,
         labelDate: lossPeriodStarts[period.key]
       })
     ])).then(Object.fromEntries)
   ]);
-  const monthlyAttackers = monthReports[0];
-  const weeklyAttackers = weekReports[0];
-  const attackerHallOfFame = buildAttackerHallOfFame(monthReports, weekReports);
-  const dailyLosses = lossReports['1d'];
+  const latestMeta = await readSnapshotMeta(latestDate);
+  const activeUniverseIds = new Set(latestMeta.universes
+    .filter((universe) => universe.status === 'ok')
+    .map((universe) => String(universe.id)));
+  const currentMonthReports = await Promise.all(monthReports.map((report) => filterActiveReport(
+    report,
+    activeUniverseIds,
+    ACTIVE_UNIVERSE_START_DATES,
+    attackerOptions
+  )));
+  const currentWeekReports = await Promise.all(weekReports.map((report) => filterActiveReport(
+    report,
+    activeUniverseIds,
+    ACTIVE_UNIVERSE_START_DATES,
+    attackerOptions
+  )));
+  const currentAttackerRollingReports = Object.fromEntries(await Promise.all(
+    Object.entries(attackerRollingReports).map(async ([key, report]) => [
+      key,
+      await filterActiveReport(report, activeUniverseIds, ACTIVE_UNIVERSE_START_DATES, attackerOptions)
+    ])
+  ));
+  const currentLossReports = Object.fromEntries(await Promise.all(
+    Object.entries(lossReports).map(async ([key, report]) => [
+      key,
+      await filterActiveReport(report, activeUniverseIds, ACTIVE_UNIVERSE_START_DATES, lossOptions)
+    ])
+  ));
+  const attackerHallOfFame = buildAttackerHallOfFame(currentMonthReports, currentWeekReports);
+
+  const archiveSnapshots = snapshots.filter((date) => date <= MERGE_ARCHIVE_DATE);
+  const archiveLatestIndex = archiveSnapshots.indexOf(MERGE_ARCHIVE_DATE);
+  const archivePreviousDate = archiveLatestIndex > 0 ? archiveSnapshots[archiveLatestIndex - 1] : '';
+  if (!archivePreviousDate) throw new Error('Не найден предыдущий снимок архива до слияния');
+  const archiveCompleteWeeks = enumerateCompleteWeeks(archiveSnapshots, MERGE_ARCHIVE_DATE);
+  const archiveMonthReports = monthReports
+    .filter((report) => report.endDate <= MERGE_ARCHIVE_DATE)
+    .map((report) => filterReport(report, MERGED_SOURCE_UNIVERSE_IDS));
+  const archiveWeekReports = weekReports
+    .filter((report) => report.endDate <= MERGE_ARCHIVE_DATE)
+    .map((report) => filterReport(report, MERGED_SOURCE_UNIVERSE_IDS));
+  const archiveAttackerStarts = Object.fromEntries(ATTACKER_ROLLING_PERIODS.map((period) => [
+    period.key,
+    findSnapshotAtOrAfter(
+      archiveSnapshots,
+      subtractDays(MERGE_ARCHIVE_DATE, period.days),
+      MERGE_ARCHIVE_DATE
+    )
+  ]));
+  const archiveLossStarts = Object.fromEntries(LOSS_PERIODS.map((period) => [
+    period.key,
+    period.key === '1d'
+      ? archivePreviousDate
+      : findSnapshotAtOrAfter(
+        archiveSnapshots,
+        subtractDays(MERGE_ARCHIVE_DATE, period.days),
+        MERGE_ARCHIVE_DATE
+      )
+  ]));
+  const archiveAttackerRollingReports = Object.fromEntries(await Promise.all(
+    ATTACKER_ROLLING_PERIODS.map(async (period) => {
+      const report = await buildReport({
+        ...attackerOptions,
+        id: `${MERGE_ARCHIVE_DATE}-${period.key}`,
+        kind: 'rolling-attackers',
+        startDate: archiveAttackerStarts[period.key],
+        endDate: MERGE_ARCHIVE_DATE,
+        labelDate: archiveAttackerStarts[period.key]
+      });
+      return [period.key, filterReport(report, MERGED_SOURCE_UNIVERSE_IDS)];
+    })
+  ));
+  const archiveLossReports = Object.fromEntries(await Promise.all(
+    LOSS_PERIODS.map(async (period) => {
+      const report = await buildReport({
+        ...lossOptions,
+        id: `${MERGE_ARCHIVE_DATE}-${period.key}`,
+        kind: 'daily-losses',
+        startDate: archiveLossStarts[period.key],
+        endDate: MERGE_ARCHIVE_DATE,
+        labelDate: archiveLossStarts[period.key]
+      });
+      return [period.key, filterReport(report, MERGED_SOURCE_UNIVERSE_IDS)];
+    })
+  ));
+  const archiveAttackerHallOfFame = buildAttackerHallOfFame(
+    archiveMonthReports,
+    archiveWeekReports
+  );
 
   await Promise.all([
-    mkdir(MONTHLY_DIR, { recursive: true }),
-    mkdir(WEEKLY_DIR, { recursive: true }),
-    mkdir(ROLLING_ATTACKERS_DIR, { recursive: true }),
-    mkdir(DAILY_DIR, { recursive: true })
+    writeReportSet({
+      reportsDir: REPORTS_DIR,
+      monthReports: currentMonthReports,
+      weekReports: currentWeekReports,
+      completeWeeks,
+      attackerRollingReports: currentAttackerRollingReports,
+      lossReports: currentLossReports,
+      attackerHallOfFame
+    }),
+    writeReportSet({
+      reportsDir: ARCHIVE_REPORTS_DIR,
+      monthReports: archiveMonthReports,
+      weekReports: archiveWeekReports,
+      completeWeeks: archiveCompleteWeeks,
+      attackerRollingReports: archiveAttackerRollingReports,
+      lossReports: archiveLossReports,
+      attackerHallOfFame: archiveAttackerHallOfFame
+    })
   ]);
-  const monthReportFiles = monthReports.map((report) => writeFile(
-    resolve(MONTHLY_DIR, `${report.id}.json`),
-    `${JSON.stringify(report)}\n`,
-    'utf8'
-  ));
-  const weekReportFiles = weekReports.map((report) => writeFile(
-    resolve(WEEKLY_DIR, `${report.id}.json`),
-    `${JSON.stringify(report)}\n`,
-    'utf8'
-  ));
-  const attackerRollingReportFiles = ATTACKER_ROLLING_PERIODS.map((period) => {
-    const report = attackerRollingReports[period.key];
-    return writeFile(
-      resolve(ROLLING_ATTACKERS_DIR, `${period.key}.json`),
-      `${JSON.stringify(report)}\n`,
-      'utf8'
-    );
-  });
-  const lossReportFiles = LOSS_PERIODS.map((period) => {
-    const report = lossReports[period.key];
-    return writeFile(
-      resolve(DAILY_DIR, `${report.id}.json`),
-      `${JSON.stringify(report)}\n`,
-      'utf8'
-    );
-  });
-  await Promise.all([
-    ...monthReportFiles,
-    ...weekReportFiles,
-    ...attackerRollingReportFiles,
-    ...lossReportFiles,
-    writeFile(
-      resolve(REPORTS_DIR, 'attacker-hall-of-fame.json'),
-      `${JSON.stringify(attackerHallOfFame)}\n`,
-      'utf8'
-    ),
-    writeFile(resolve(REPORTS_DIR, 'index.json'), `${JSON.stringify({
-      attackerHallOfFame: {
-        path: 'attacker-hall-of-fame.json',
-        generatedAt: attackerHallOfFame.generatedAt
-      },
-      attackers: {
-        defaultPeriod: 'month',
-        periods: {
-          month: {
-            latest: monthlyAttackers.id,
-            items: monthReports.map((report) => ({
-              id: report.id,
-              path: `monthly-attackers/${report.id}.json`,
-              startDate: report.startDate,
-              endDate: report.endDate
-            }))
-          },
-          week: {
-            latest: weeklyAttackers.id,
-            items: weekReports.map((report) => {
-              const week = completeWeeks.find((item) => item.id === report.id);
-              return {
-                id: report.id,
-                path: `weekly-attackers/${report.id}.json`,
-                startDate: report.startDate,
-                endDate: report.endDate,
-                isoYear: week.isoYear,
-                week: week.week
-              };
-            })
-          },
-          ...Object.fromEntries(ATTACKER_ROLLING_PERIODS.map((period) => {
-            const report = attackerRollingReports[period.key];
-            return [period.key, {
-              label: period.label,
-              path: `rolling-attackers/${period.key}.json`,
-              startDate: report.startDate,
-              endDate: report.endDate
-            }];
-          }))
-        }
-      },
-      monthlyAttackers: {
-        latest: monthlyAttackers.id,
-        path: `monthly-attackers/${monthlyAttackers.id}.json`
-      },
-      dailyLosses: {
-        latest: dailyLosses.id,
-        path: `daily-losses/${dailyLosses.id}.json`,
-        defaultPeriod: '1d',
-        periods: Object.fromEntries(LOSS_PERIODS.map((period) => {
-          const report = lossReports[period.key];
-          return [period.key, {
-            label: period.label,
-            path: `daily-losses/${report.id}.json`,
-            startDate: report.startDate,
-            endDate: report.endDate
-          }];
-        }))
-      }
-    })}\n`, 'utf8')
-  ]);
+
+  const monthlyAttackers = currentMonthReports[0];
+  const weeklyAttackers = currentWeekReports[0];
+  const dailyLosses = currentLossReports['1d'];
 
   return {
     monthlyAttackers,
     weeklyAttackers,
-    monthReports,
-    weekReports,
-    attackerRollingReports,
+    monthReports: currentMonthReports,
+    weekReports: currentWeekReports,
+    attackerRollingReports: currentAttackerRollingReports,
     attackerHallOfFame,
     dailyLosses,
-    lossReports
+    lossReports: currentLossReports,
+    archive: {
+      monthReports: archiveMonthReports,
+      weekReports: archiveWeekReports,
+      attackerRollingReports: archiveAttackerRollingReports,
+      attackerHallOfFame: archiveAttackerHallOfFame,
+      lossReports: archiveLossReports
+    }
   };
 }
