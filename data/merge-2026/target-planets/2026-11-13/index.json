@@ -1,0 +1,34 @@
+{
+  "generatedAt": "2026-11-13T10:59:53.400Z",
+  "asOfDate": "2026-11-13",
+  "universes": [
+    {
+      "universeId": "1",
+      "universeName": "Universe 1",
+      "apiTimestamp": "2026-11-13T10:02:20.000Z",
+      "playerCount": 2112,
+      "coordinateApiCurrent": true
+    },
+    {
+      "universeId": "272",
+      "universeName": "Quasi-Stellar",
+      "apiTimestamp": "2026-11-06T15:00:48.000Z",
+      "playerCount": 727,
+      "coordinateApiCurrent": false
+    },
+    {
+      "universeId": "273",
+      "universeName": "Regulus",
+      "apiTimestamp": "2026-11-06T15:00:48.000Z",
+      "playerCount": 822,
+      "coordinateApiCurrent": false
+    },
+    {
+      "universeId": "274",
+      "universeName": "Scorpius",
+      "apiTimestamp": "2026-11-06T15:00:51.000Z",
+      "playerCount": 883,
+      "coordinateApiCurrent": false
+    }
+  ]
+}
