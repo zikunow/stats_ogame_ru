@@ -4,7 +4,9 @@ import path from 'node:path';
 const ROOT = process.cwd();
 const MERGE_DIR = path.join(ROOT, 'data', 'merge-2026');
 const SOURCE_DIR = path.join(MERGE_DIR, 'pre-merge-planets');
-const AS_OF_DATE = process.env.MERGE_AS_OF_DATE || '2026-11-13';
+const historyIndex = JSON.parse(await fs.readFile(path.join(ROOT, 'data', 'history', 'index.json'), 'utf8'));
+const AS_OF_DATE = process.env.MERGE_AS_OF_DATE || historyIndex.latest;
+const MERGE_START_DATE = '2026-11-09';
 const HARD_MERGE_DATE = '2026-11-12';
 const PROFILE_METRICS = [
   { key: 'total', type: '0', label: 'Общие очки', tolerance: 0.02, weight: 3 },
@@ -27,10 +29,9 @@ const TARGETS = [
   { id: '273', name: 'Regulus' },
   { id: '274', name: 'Scorpius' }
 ];
-const HISTORY_DATES = [
-  '2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07', '2026-11-08',
-  '2026-11-09', '2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13'
-].filter((date) => date <= AS_OF_DATE);
+const HISTORY_DATES = (historyIndex.snapshots || [])
+  .filter((date) => date >= '2026-11-04' && date <= AS_OF_DATE)
+  .sort();
 
 function decodeXml(value = '') {
   return value
@@ -210,11 +211,18 @@ function latestRow(rows, universeId, playerId) {
   return null;
 }
 
-function firstTargetAppearances(history, targetPlayer, sourcePlayer, expectedScore = null) {
+function firstTargetAppearances(
+  history,
+  targetPlayer,
+  sourcePlayer,
+  expectedScore = null,
+  allowNameJourney = true
+) {
   const exact = [];
   const byName = [];
   const names = new Set([normalizeName(targetPlayer?.name), normalizeName(sourcePlayer.name)].filter(Boolean));
   for (const snapshot of history) {
+    if (snapshot.date < MERGE_START_DATE) continue;
     for (const row of snapshot.data) {
       if (!TARGETS.some((target) => target.id === String(row.universeId))) continue;
       if (targetPlayer && String(row.universeId) === targetPlayer.universeId && String(row.playerId) === targetPlayer.playerId) {
@@ -222,7 +230,11 @@ function firstTargetAppearances(history, targetPlayer, sourcePlayer, expectedSco
       }
       if (
         names.has(normalizeName(row.name))
-        && (!Number.isFinite(expectedScore) || relativeDifference(expectedScore, row.score) <= 0.05)
+        && (
+          (allowNameJourney && row.score === 0)
+          || !Number.isFinite(expectedScore)
+          || relativeDifference(expectedScore, row.score) <= 0.05
+        )
       ) {
         byName.push({ date: snapshot.date, universeId: String(row.universeId), universeName: row.universeName, playerId: String(row.playerId), name: row.name, score: row.score });
       }
@@ -232,6 +244,21 @@ function firstTargetAppearances(history, targetPlayer, sourcePlayer, expectedSco
     .filter((value, index, list) => list.findIndex((item) => item.date === value.date && item.universeId === value.universeId && item.playerId === value.playerId) === index)
     .sort((a, b) => a.date.localeCompare(b.date) || a.universeId.localeCompare(b.universeId));
   return combined;
+}
+
+function nextSnapshotDate(date, maximumDate = HARD_MERGE_DATE) {
+  return HISTORY_DATES.find((candidate) => candidate > date && candidate <= maximumDate) || '';
+}
+
+function migrationStateLabel(targetPlayer, targetCurrent, appearances) {
+  if (!targetPlayer) return 'Не найден';
+  const zeroAppearance = appearances.find((entry) => entry.score === 0);
+  const firstNonZero = appearances.find((entry) => entry.score > 0);
+  if (!targetCurrent || targetCurrent.score === 0) return 'До сих пор 0 очков';
+  if (zeroAppearance && firstNonZero && zeroAppearance.date < firstNonZero.date) {
+    return `Активирован после 0 (${firstNonZero.date})`;
+  }
+  return firstNonZero ? 'Появился сразу с очками' : 'Текущее состояние найдено';
 }
 
 function transferLabel(firstSeenDate) {
@@ -250,7 +277,10 @@ function csvEscape(value) {
 function toCsv(rows) {
   const columns = [
     ['matchStatus', 'Статус сопоставления'], ['confidence', 'Уверенность'], ['transferType', 'Способ переноса'],
-    ['firstSeenInTarget', 'Первое появление в цели'], ['sourceUniverse', 'Откуда'], ['sourcePlayerId', 'Старый PlayerID'],
+    ['migrationState', 'Состояние переноса'], ['sourceLastSeen', 'Последний срез в исходной'],
+    ['sourceDisappearedOn', 'Исчез из исходной к'], ['firstSeenInTarget', 'Первое появление в цели'],
+    ['zeroFirstSeen', 'Первый нулевой аккаунт'], ['activationDate', 'Первые реальные очки'],
+    ['sourceUniverse', 'Откуда'], ['sourcePlayerId', 'Старый PlayerID'],
     ['sourceName', 'Старый ник'], ['sourceAlliance', 'Старый альянс'], ['sourceStatus', 'Статус до'],
     ['sourceStatusRaw', 'Флаги статуса до'], ['targetUniverse', 'Куда'], ['targetPlayerId', 'Новый PlayerID'],
     ['targetName', 'Текущий ник'], ['targetAlliance', 'Текущий альянс'], ['targetStatus', 'Статус сейчас'],
@@ -295,6 +325,11 @@ for (const universe of sourceIndex.universes) {
   for (const player of snapshot.players) {
     sourcePlayers.push({ ...player, universeId: snapshot.universeId, universeName: snapshot.universeName });
   }
+}
+const sourceNameCounts = new Map();
+for (const sourcePlayer of sourcePlayers) {
+  const name = normalizeName(sourcePlayer.name);
+  sourceNameCounts.set(name, (sourceNameCounts.get(name) || 0) + 1);
 }
 const history = [];
 const profileMapsByDate = new Map();
@@ -354,14 +389,6 @@ for (const targetPlayer of targetPlayers) {
     targetsByPlanet.set(planet.planetId, matches);
   }
 }
-const targetByName = new Map();
-for (const targetPlayer of targetPlayers) {
-  const key = normalizeName(targetPlayer.name);
-  const values = targetByName.get(key) || [];
-  values.push(targetPlayer);
-  targetByName.set(key, values);
-}
-
 const historyMaps = history.map((snapshot) => ({
   date: snapshot.date,
   map: new Map(snapshot.data.map((row) => [`${row.universeId}:${row.playerId}`, row]))
@@ -369,20 +396,32 @@ const historyMaps = history.map((snapshot) => ({
 const sourceScoreByKey = new Map();
 for (const sourcePlayer of sourcePlayers) {
   const key = `${sourcePlayer.universeId}:${sourcePlayer.playerId}`;
+  let fallback = null;
   for (let index = historyMaps.length - 1; index >= 0; index -= 1) {
+    if (historyMaps[index].date > HARD_MERGE_DATE) continue;
     const row = historyMaps[index].map.get(key);
-    if (row) {
+    if (row && !fallback) fallback = { date: historyMaps[index].date, row };
+    if (row?.score > 0) {
       sourceScoreByKey.set(key, { date: historyMaps[index].date, row });
       break;
     }
   }
+  if (!sourceScoreByKey.has(key) && fallback) sourceScoreByKey.set(key, fallback);
 }
 const firstTargetByKey = new Map();
+const firstTargetNonZeroByKey = new Map();
 for (const snapshot of history) {
   for (const row of snapshot.data) {
     const key = `${row.universeId}:${row.playerId}`;
     if (TARGETS.some((target) => target.id === String(row.universeId)) && !firstTargetByKey.has(key)) {
       firstTargetByKey.set(key, { date: snapshot.date, row });
+    }
+    if (
+      TARGETS.some((target) => target.id === String(row.universeId))
+      && row.score > 0
+      && !firstTargetNonZeroByKey.has(key)
+    ) {
+      firstTargetNonZeroByKey.set(key, { date: snapshot.date, row });
     }
   }
 }
@@ -390,11 +429,34 @@ const sourceProfilesByKey = new Map([...sourceScoreByKey.entries()].map(([key, i
   key,
   getProfile(info.date, key)
 ]));
-const targetFirstProfilesByKey = new Map([...firstTargetByKey.entries()].map(([key, info]) => [
+const targetFirstProfilesByKey = new Map([...firstTargetNonZeroByKey.entries()].map(([key, info]) => [
   key,
   getProfile(info.date, key)
 ]));
-const targetPlayersByProfileTotal = targetPlayers
+const migrationTargetPlayers = targetPlayers.filter((player) => {
+  const key = `${player.universeId}:${player.playerId}`;
+  return (firstTargetByKey.get(key)?.date || AS_OF_DATE) >= MERGE_START_DATE;
+});
+const targetAliasesByKey = new Map(migrationTargetPlayers.map((player) => [
+  `${player.universeId}:${player.playerId}`,
+  new Set([normalizeName(player.name)])
+]));
+for (const snapshot of history) {
+  for (const row of snapshot.data) {
+    const aliases = targetAliasesByKey.get(`${row.universeId}:${row.playerId}`);
+    if (aliases) aliases.add(normalizeName(row.name));
+  }
+}
+const targetByName = new Map();
+for (const targetPlayer of migrationTargetPlayers) {
+  const key = `${targetPlayer.universeId}:${targetPlayer.playerId}`;
+  for (const alias of targetAliasesByKey.get(key) || []) {
+    const values = targetByName.get(alias) || [];
+    values.push(targetPlayer);
+    targetByName.set(alias, values);
+  }
+}
+const targetPlayersByProfileTotal = migrationTargetPlayers
   .map((candidate) => {
     const key = `${candidate.universeId}:${candidate.playerId}`;
     return { candidate, total: targetFirstProfilesByKey.get(key)?.total };
@@ -425,7 +487,7 @@ function targetCandidatesNearTotal(sourceTotal, tolerance = 0.02) {
 function evaluateProfileCandidate(sourceKey, targetPlayer) {
   const sourceInfo = sourceScoreByKey.get(sourceKey);
   const targetKey = `${targetPlayer.universeId}:${targetPlayer.playerId}`;
-  const first = firstTargetByKey.get(targetKey);
+  const first = firstTargetNonZeroByKey.get(targetKey);
   if (!sourceInfo || !first) return null;
   const sourceProfile = sourceProfilesByKey.get(sourceKey);
   const targetProfile = targetFirstProfilesByKey.get(targetKey);
@@ -448,27 +510,19 @@ for (const sourcePlayer of sourcePlayers) {
   }
 }
 
-// Сначала используем неизменные ID планет, если координатный API цели уже обновился.
-for (const sourcePlayer of sourcePlayers) {
-  const sourceKey = `${sourcePlayer.universeId}:${sourcePlayer.playerId}`;
+function countMatchingPlanets(sourcePlayer, targetPlayer) {
   const candidateCounts = new Map();
   for (const planet of sourcePlayer.planets) {
-    // В разных старых вселенных системные и ранние ID могут совпадать; такие ID не являются доказательством переноса.
+    // IDs are only supporting evidence: merge algorithms can renumber planets.
     if ((sourcePlanetOwners.get(planet.planetId)?.size || 0) !== 1) continue;
     for (const candidate of targetsByPlanet.get(planet.planetId) || []) {
       candidateCounts.set(candidate, (candidateCounts.get(candidate) || 0) + 1);
     }
   }
-  const candidates = [...candidateCounts.entries()].sort((a, b) => b[1] - a[1]);
-  if (candidates.length && (!candidates[1] || candidates[0][1] > candidates[1][1])) {
-    const [targetPlayer, matchedPlanets] = candidates[0];
-    const targetKey = `${targetPlayer.universeId}:${targetPlayer.playerId}`;
-    matchesBySourceKey.set(sourceKey, { targetPlayer, matchedPlanets, confidence: 'Высокая', matchMethod: 'ID планет', matchStatus: 'Подтверждён' });
-    usedTargetKeys.add(targetKey);
-  }
+  return candidateCounts.get(targetPlayer) || 0;
 }
 
-// Затем — точный ник. Профиль рейтингов помогает подтвердить или разобрать дубликаты ников.
+// Primary key: nickname (including historical aliases). Score profiles disambiguate duplicates.
 for (const sourcePlayer of sourcePlayers) {
   const sourceKey = `${sourcePlayer.universeId}:${sourcePlayer.playerId}`;
   if (matchesBySourceKey.has(sourceKey)) continue;
@@ -478,14 +532,32 @@ for (const sourcePlayer of sourcePlayers) {
     const [targetPlayer] = candidates;
     const evaluation = evaluateProfileCandidate(sourceKey, targetPlayer);
     const profileConfirmed = evaluation?.comparison.isMatch;
+    const targetKey = `${targetPlayer.universeId}:${targetPlayer.playerId}`;
+    const zeroOnly = !firstTargetNonZeroByKey.has(targetKey);
+    const sourceNameUnique = sourceNameCounts.get(normalizeName(sourcePlayer.name)) === 1;
+    if (!sourceNameUnique && !profileConfirmed) continue;
+    const totalDifference = evaluation?.comparison.differences.total;
+    const profileShare = evaluation?.comparison.compared
+      ? evaluation.comparison.withinTolerance / evaluation.comparison.compared
+      : 0;
+    const incompatibleProfile = !zeroOnly
+      && Number.isFinite(totalDifference)
+      && totalDifference > 0.05
+      && profileShare < 0.8;
+    if (incompatibleProfile) continue;
+    const matchedPlanets = countMatchingPlanets(sourcePlayer, targetPlayer);
     matchesBySourceKey.set(sourceKey, {
       targetPlayer,
-      matchedPlanets: 0,
+      matchedPlanets,
       confidence: profileConfirmed ? 'Высокая' : 'Средняя',
-      matchMethod: profileConfirmed ? 'Точный ник + профиль рейтингов' : 'Уникальный точный ник',
-      matchStatus: profileConfirmed ? 'Подтверждён профилем' : 'Предварительно сопоставлен'
+      matchMethod: profileConfirmed
+        ? 'Точный ник + профиль рейтингов'
+        : zeroOnly ? 'Точный ник + нулевой аккаунт' : 'Уникальный точный ник',
+      matchStatus: profileConfirmed
+        ? 'Подтверждён профилем'
+        : zeroOnly ? 'Найден нулевой аккаунт' : 'Предварительно сопоставлен'
     });
-    usedTargetKeys.add(`${targetPlayer.universeId}:${targetPlayer.playerId}`);
+    usedTargetKeys.add(targetKey);
   } else if (candidates.length > 1) {
     const evaluated = candidates
       .map((candidate) => ({ candidate, evaluation: evaluateProfileCandidate(sourceKey, candidate) }))
@@ -499,7 +571,7 @@ for (const sourcePlayer of sourcePlayers) {
       const targetPlayer = evaluated[0].candidate;
       matchesBySourceKey.set(sourceKey, {
         targetPlayer,
-        matchedPlanets: 0,
+        matchedPlanets: countMatchingPlanets(sourcePlayer, targetPlayer),
         confidence: 'Высокая',
         matchMethod: 'Ник-дубликат + профиль рейтингов',
         matchStatus: 'Подтверждён профилем'
@@ -528,7 +600,7 @@ for (const sourcePlayer of sourcePlayers) {
     const targetPlayer = candidates[0].candidate;
     matchesBySourceKey.set(sourceKey, {
       targetPlayer,
-      matchedPlanets: 0,
+      matchedPlanets: countMatchingPlanets(sourcePlayer, targetPlayer),
       confidence: 'Средняя',
       matchMethod: 'Профиль рейтингов',
       matchStatus: 'Предварительно сопоставлен'
@@ -550,41 +622,64 @@ for (const sourcePlayer of sourcePlayers) {
 
   const targetCurrent = targetPlayer ? currentByKey.get(`${targetPlayer.universeId}:${targetPlayer.playerId}`) : null;
   const targetKey = targetPlayer ? `${targetPlayer.universeId}:${targetPlayer.playerId}` : '';
-  const targetFirstInfo = targetKey ? firstTargetByKey.get(targetKey) : null;
+  const targetFirstNonZeroInfo = targetKey ? firstTargetNonZeroByKey.get(targetKey) : null;
   const sourceProfile = sourceScoreInfo ? sourceProfilesByKey.get(sourceKey) : null;
-  const targetProfile = targetFirstInfo ? targetFirstProfilesByKey.get(targetKey) : null;
+  const targetProfile = targetFirstNonZeroInfo ? targetFirstProfilesByKey.get(targetKey) : null;
   const profileComparison = compareProfiles(sourceProfile, targetProfile);
   const percentDifference = (key) => {
     const difference = profileComparison.differences[key];
     return Number.isFinite(difference) ? Math.round(difference * 10000) / 100 : null;
   };
   const targetStatusRaw = targetCurrent?.status || targetPlayer?.status || '';
+  const allowNameJourney = sourceNameCounts.get(normalizeName(sourcePlayer.name)) === 1;
   const appearances = targetPlayer
-    ? firstTargetAppearances(history, targetPlayer, sourcePlayer, sourceProfile?.total)
+    ? firstTargetAppearances(
+      history,
+      targetPlayer,
+      sourcePlayer,
+      sourceProfile?.total,
+      allowNameJourney
+    )
     : [];
   const firstSeen = appearances[0]?.date || '';
+  const zeroFirstSeen = appearances.find((entry) => entry.score === 0)?.date || '';
+  const activationDate = appearances.find((entry) => entry.score > 0)?.date
+    || targetFirstNonZeroInfo?.date
+    || '';
+  const sourceLastSeenInfo = latestRow(
+    history.filter((snapshot) => snapshot.date <= HARD_MERGE_DATE),
+    String(sourcePlayer.universeId),
+    String(sourcePlayer.playerId)
+  );
+  const sourceDisappearedOn = sourceLastSeenInfo
+    ? nextSnapshotDate(sourceLastSeenInfo.date)
+    : '';
   const journey = appearances
     .filter((entry, index, list) => index === 0 || entry.universeId !== list[index - 1].universeId || entry.playerId !== list[index - 1].playerId)
     .map((entry) => `${entry.date}: ${entry.universeName} (${entry.playerId})`)
     .join(' → ');
   const zeroScore = Boolean(targetPlayer && (!targetCurrent || targetCurrent.score === 0));
+  const migrationState = migrationStateLabel(targetPlayer, targetCurrent, appearances);
   let note = '';
   if (zeroScore) note = [note, 'В актуальном рейтинге нет очков или указано 0'].filter(Boolean).join('; ');
   if (appearances.some((entry) => targetPlayer && entry.universeId !== targetPlayer.universeId)) {
     note = [note, 'Обнаружена промежуточная целевая вселенная; возможен перенос оператором'].filter(Boolean).join('; ');
   }
-  if (sourcePlayer.universeName === 'Capella' && sourcePlayer.name === 'Zero Day') {
-    note = [
-      note,
-      'По информации владельца: после hard merge аккаунт был перенесён оператором в Scorpius; промежуточная цель не попала в суточные снимки'
-    ].filter(Boolean).join('; ');
+  if (matchedPlanets > 0) {
+    note = [note, `Совпало ID планет: ${matchedPlanets} (только дополнительная проверка)`]
+      .filter(Boolean)
+      .join('; ');
   }
-
   rows.push({
     matchStatus,
     confidence,
     transferType: targetPlayer ? transferLabel(firstSeen) : 'Не определён',
+    migrationState,
+    sourceLastSeen: sourceLastSeenInfo?.date || '',
+    sourceDisappearedOn,
     firstSeenInTarget: firstSeen,
+    zeroFirstSeen,
+    activationDate,
     sourceUniverse: sourcePlayer.universeName,
     sourceUniverseId: sourcePlayer.universeId,
     sourcePlayerId: sourcePlayer.playerId,
@@ -602,7 +697,7 @@ for (const sourcePlayer of sourcePlayers) {
     sourceScore: sourceScoreInfo?.row.score ?? null,
     sourceScoreDate: sourceScoreInfo?.date || '',
     targetScore: targetCurrent?.score ?? null,
-    profileTargetDate: targetFirstInfo?.date || '',
+    profileTargetDate: targetFirstNonZeroInfo?.date || '',
     profileVerdict: targetPlayer ? profileComparison.verdict : '',
     profileSimilarity: Number.isFinite(profileComparison.similarity)
       ? Math.round(profileComparison.similarity * 100) / 100
@@ -650,18 +745,21 @@ for (const sourcePlayer of sourcePlayers) {
 rows.sort((a, b) => a.sourceUniverse.localeCompare(b.sourceUniverse, 'ru') || (b.sourceScore || 0) - (a.sourceScore || 0));
 const summary = {
   totalSourcePlayers: rows.length,
-  confirmedByPlanets: rows.filter((row) => row.matchMethod === 'ID планет').length,
+  matchedWithPlanetSupport: rows.filter((row) => row.matchedPlanets > 0).length,
   matchedByName: rows.filter((row) => row.matchMethod.toLocaleLowerCase('ru-RU').includes('ник')).length,
   confirmedByProfile: rows.filter((row) => row.profileVerdict === 'Совпадает').length,
   matchedByProfileOnly: rows.filter((row) => row.matchMethod === 'Профиль рейтингов').length,
   notFound: rows.filter((row) => row.matchStatus === 'Не найден в целевых вселенных').length,
   voluntaryBeforeHardMerge: rows.filter((row) => row.transferType === 'Самостоятельно до hard merge').length,
   hardMerge: rows.filter((row) => row.transferType === 'Hard merge (сам не переходил)').length,
-  zeroScore: rows.filter((row) => row.zeroScore === 'Да').length
+  activatedAfterZero: rows.filter((row) => row.migrationState.startsWith('Активирован после 0')).length,
+  appearedWithScore: rows.filter((row) => row.migrationState === 'Появился сразу с очками').length,
+  zeroScore: rows.filter((row) => row.migrationState === 'До сих пор 0 очков').length
 };
 const output = {
   generatedAt: new Date().toISOString(),
   asOfDate: AS_OF_DATE,
+  mergeStartDate: MERGE_START_DATE,
   hardMergeDate: HARD_MERGE_DATE,
   sourceSnapshotGeneratedAt: sourceIndex.generatedAt,
   targetSnapshots: targetSnapshots.map((snapshot) => ({
@@ -672,8 +770,9 @@ const output = {
     coordinateApiCurrent: snapshot.apiTimestamp.slice(0, 10) >= HARD_MERGE_DATE
   })),
   classificationRules: {
-    confirmed: 'Совпадение хотя бы одного неизменного ID планеты (если координатный API цели обновлён)',
+    primary: 'Сначала ищется точный ник, включая ники из промежуточных снимков целевых вселенных',
     profile: 'Общие, экономика, исследования, боевая мощь, формы жизни, флот и оборона сравниваются с допуском 2%; построено, уничтожено и потеряно — с допуском 5%',
+    planets: 'ID планет используется только как дополнительная проверка и не создаёт совпадение самостоятельно',
     voluntary: `Первое появление в целевой вселенной раньше ${HARD_MERGE_DATE}`,
     hardMerge: `Первое появление в целевой вселенной ${HARD_MERGE_DATE} или позже`,
     review: 'Уникальный ник без совпадающего профиля и неоднозначные случаи следует перепроверить в финальной версии'
@@ -692,15 +791,18 @@ await fs.writeFile(path.join(MERGE_DIR, `MIGRATION-DRAFT-${AS_OF_DATE}.md`), `# 
   `- Появились во время/после hard merge: **${summary.hardMerge}**\n` +
   `- Подтверждены профилем рейтингов: **${summary.confirmedByProfile}**\n` +
   `- Найдены только по профилю рейтингов: **${summary.matchedByProfileOnly}**\n` +
-  `- С нулевыми очками: **${summary.zeroScore}**\n` +
+  `- Прошли через нулевой аккаунт и активировались позже: **${summary.activatedAfterZero}**\n` +
+  `- Появились сразу с очками: **${summary.appearedWithScore}**\n` +
+  `- До сих пор с нулевыми очками: **${summary.zeroScore}**\n` +
   `- Пока не найдены: **${summary.notFound}**\n\n` +
   `Файлы: [CSV](migration-draft-${AS_OF_DATE}.csv) · [JSON](migration-draft-${AS_OF_DATE}.json) · [снимки API целей](target-planets/${AS_OF_DATE}/).\n\n` +
   `## Как определялся способ переноса\n\n` +
+  `Сначала аккаунт ищется по точному нику во всех снимках целевых вселенных. Затем совпадения проверяются по профилю рейтингов. Так сохраняется цепочка «исчез из исходной → появился с 0 очков → получил реальные очки».\n\n` +
   `Первое появление в целевой вселенной до ${HARD_MERGE_DATE} помечается как самостоятельный переход. Появление ${HARD_MERGE_DATE} или позже — как hard merge (игрок сам не переходил).\n\n` +
   `Профиль аккаунта сравнивается по общим очкам, экономике, исследованиям, боевой мощи, формам жизни, флоту, обороне, построенным, уничтоженным и потерянным очкам. Для основных рейтингов используется допуск 2%, для построенных, уничтоженных и потерянных — 5%.\n\n` +
-  `Статусы приведены к понятным значениям: активный, РО, неактивный (i/I), РО + неактивный и заблокированный.\n\n` +
+  `Статусы приведены к понятным значениям: активный, РО, неактивный (i/I), РО + неактивный и заблокированный. ID планет используется только как дополнительная подсказка: разные алгоритмы переноса могут менять эти ID.\n\n` +
   `## Ограничение черновика\n\n` +
-  `Координатные API Quasi-Stellar, Regulus и Scorpius на момент сборки всё ещё отдавали снимки от 06.11.2026. Поэтому точные совпадения по ID планет доступны главным образом для Universe 1; остальные аккаунты сопоставляются по нику и профилю рейтингов.\n`);
+  `Ники могут совпадать у разных игроков или меняться после переезда. Такие случаи без убедительного профиля рейтингов остаются предварительными и требуют ручной проверки.\n`);
 await fs.writeFile(path.join(targetDir, 'index.json'), `${JSON.stringify({
   generatedAt: output.generatedAt,
   asOfDate: AS_OF_DATE,
