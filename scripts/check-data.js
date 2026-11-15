@@ -73,7 +73,12 @@ for (const snapshotDate of [...index.snapshots].sort()) {
     for (const row of stats[type]) {
       const previousScore = previousScores.get(`${row.universeId}:${row.playerId}`);
       const expectedDelta = Number.isFinite(previousScore) ? row.score - previousScore : null;
-      if (row.scoreDelta !== expectedDelta) {
+      // Older merge snapshots stored the full score when a transferred account
+      // changed from a temporary zero to its real value. New snapshots store null.
+      const validZeroBaselineTransition = previousScore === 0
+        && row.score > 0
+        && (row.scoreDelta === null || row.scoreDelta === row.score);
+      if (!validZeroBaselineTransition && row.scoreDelta !== expectedDelta) {
         throw new Error(`Invalid score delta for ${snapshotDate}/${type}/${row.universeId}:${row.playerId}`);
       }
     }

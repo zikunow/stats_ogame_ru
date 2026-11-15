@@ -21,9 +21,11 @@ export function addScoreDeltas(stats, previousStats = {}) {
 
     stats[type] = rows.map((row) => {
       const previousScore = previousScores.get(`${row.universeId}:${row.playerId}`);
+      const hasUsableBaseline = Number.isFinite(previousScore)
+        && !(previousScore === 0 && row.score > 0);
       return {
         ...row,
-        scoreDelta: Number.isFinite(previousScore) ? row.score - previousScore : null
+        scoreDelta: hasUsableBaseline ? row.score - previousScore : null
       };
     });
   }

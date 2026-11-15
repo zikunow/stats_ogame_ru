@@ -816,7 +816,8 @@ function getVisibleRows() {
   ) {
     rows = rows.map((row) => {
       const previousScore = comparison.scores.get(`${row.universeId}:${row.playerId}`);
-      const isNew = !Number.isFinite(previousScore);
+      const isNew = !Number.isFinite(previousScore)
+        || (previousScore === 0 && row.score > 0);
       return {
         ...row,
         scoreDelta: isNew ? null : row.score - previousScore,
@@ -827,10 +828,15 @@ function getVisibleRows() {
     const hasComparison = Boolean(state.data.comparisonDate);
     rows = rows.map((row) => {
       const isPostMergeBaseline = state.snapshotDate === getPostMergeBaseline(row.universeId);
+      // During a merge OGame can publish a transferred account with zero points
+      // before its real score becomes available. That is a new baseline, not a gain.
+      const isZeroBaselineTransition = row.score > 0 && row.scoreDelta === row.score;
+      const isNew = hasComparison
+        && (!Number.isFinite(row.scoreDelta) || isZeroBaselineTransition);
       return {
         ...row,
-        scoreDelta: isPostMergeBaseline ? null : row.scoreDelta,
-        scoreDeltaIsNew: !isPostMergeBaseline && hasComparison && !Number.isFinite(row.scoreDelta),
+        scoreDelta: isPostMergeBaseline || isZeroBaselineTransition ? null : row.scoreDelta,
+        scoreDeltaIsNew: !isPostMergeBaseline && isNew,
         scoreDeltaIsBaseline: isPostMergeBaseline
       };
     });
